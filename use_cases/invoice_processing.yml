@@ -1,0 +1,109 @@
+agent:
+  name: "Invoice Processing"
+  description: "Validates incoming invoices, matches them to purchase orders, auto-approves or flags discrepancies for review"
+  instruction: "You process incoming supplier invoices. Extract invoice data, match it against existing purchase orders, and either auto-approve for payment or flag discrepancies for manual review by the finance team."
+
+tools:
+  - name: "extract_invoice_data"
+    description: "Extracts structured data from the invoice text or document"
+    input: { invoice_text: "string" }
+    output: { invoice_number: "string", supplier: "string", amount: "number", currency: "string", line_items: "string", due_date: "string" }
+    mock:
+      - input: { invoice_text: "Invoice INV-20260301 from Acme Corp, EUR 4,250.00 for 50x Server Rack Cables, due 2026-04-15" }
+        output: { invoice_number: "INV-20260301", supplier: "Acme Corp", amount: 4250.00, currency: "EUR", line_items: "50x Server Rack Cables", due_date: "2026-04-15" }
+      - input: { invoice_text: "Invoice INV-20260302 from CloudScale Ltd, USD 18,900.00 for Annual Platform License, due 2026-04-01" }
+        output: { invoice_number: "INV-20260302", supplier: "CloudScale Ltd", amount: 18900.00, currency: "USD", line_items: "Annual Platform License", due_date: "2026-04-01" }
+      - input: { invoice_text: "Invoice INV-20260303 from Office Plus, EUR 320.00 for 20x Printer Toner Cartridges, due 2026-04-20" }
+        output: { invoice_number: "INV-20260303", supplier: "Office Plus", amount: 320.00, currency: "EUR", line_items: "20x Printer Toner Cartridges", due_date: "2026-04-20" }
+
+  - name: "match_purchase_order"
+    description: "Matches the invoice against existing purchase orders in the ERP system"
+    input: { supplier: "string", amount: "number", line_items: "string" }
+    output: { matched: "boolean", po_number: "string", po_amount: "number", variance: "number", variance_percent: "number" }
+    mock:
+      - input: { supplier: "Acme Corp", amount: 4250.00, line_items: "50x Server Rack Cables" }
+        output: { matched: true, po_number: "PO-7810", po_amount: 4250.00, variance: 0.00, variance_percent: 0.0 }
+      - input: { supplier: "CloudScale Ltd", amount: 18900.00, line_items: "Annual Platform License" }
+        output: { matched: true, po_number: "PO-7655", po_amount: 15000.00, variance: 3900.00, variance_percent: 26.0 }
+      - input: { supplier: "Office Plus", amount: 320.00, line_items: "20x Printer Toner Cartridges" }
+        output: { matched: false, po_number: "", po_amount: 0.00, variance: 0.00, variance_percent: 0.0 }
+
+  - name: "approve_payment"
+    description: "Approves the invoice and schedules it for the next payment run"
+    input: { invoice_number: "string", po_number: "string", amount: "number", supplier: "string" }
+    output: { approved: "boolean", payment_id: "string", scheduled_date: "string" }
+    mock:
+      - input: { invoice_number: "INV-20260301", po_number: "PO-7810", amount: 4250.00, supplier: "Acme Corp" }
+        output: { approved: true, payment_id: "PAY-6601", scheduled_date: "2026-04-10" }
+
+  - name: "flag_for_review"
+    description: "Flags the invoice for manual review by the finance team with a reason"
+    input: { invoice_number: "string", supplier: "string", reason: "string", variance: "number" }
+    output: { flagged: "boolean", review_ticket_id: "string", assigned_to: "string" }
+    mock:
+      - input: { invoice_number: "INV-20260302", supplier: "CloudScale Ltd", reason: "PO amount variance exceeds 10% threshold", variance: 3900.00 }
+        output: { flagged: true, review_ticket_id: "FIN-0221", assigned_to: "Accounts Payable" }
+      - input: { invoice_number: "INV-20260303", supplier: "Office Plus", reason: "No matching purchase order found", variance: 0.00 }
+        output: { flagged: true, review_ticket_id: "FIN-0222", assigned_to: "Procurement" }
+
+flow:
+  - step: "extract"
+    tool: "extract_invoice_data"
+    input_from: "user_input"
+
+  - step: "match"
+    tool: "match_purchase_order"
+    input_from: "extract"
+
+  - step: "route_match"
+    condition:
+      if: "match.output.matched == true"
+      then: "check_variance"
+      else: "flag"
+
+  - step: "check_variance"
+    condition:
+      if: "match.output.variance_percent <= 10"
+      then: "approve"
+      else: "flag"
+
+  - step: "approve"
+    tool: "approve_payment"
+    input_from: "match"
+
+  - step: "flag"
+    tool: "flag_for_review"
+    input_from: "match"
+
+scenarios:
+  - name: "exact_po_match_auto_approved"
+    input: "Invoice INV-20260301 from Acme Corp, EUR 4,250.00 for 50x Server Rack Cables, due 2026-04-15"
+    context: { invoice_number: "INV-20260301" }
+    expected_path: ["extract", "match", "check_variance", "approve"]
+    expected_tools: ["extract_invoice_data", "match_purchase_order", "approve_payment"]
+    expected_outcome: { approved: true }
+
+  - name: "po_variance_flagged_for_review"
+    input: "Invoice INV-20260302 from CloudScale Ltd, USD 18,900.00 for Annual Platform License, due 2026-04-01"
+    context: { invoice_number: "INV-20260302" }
+    expected_path: ["extract", "match", "check_variance", "flag"]
+    expected_tools: ["extract_invoice_data", "match_purchase_order", "flag_for_review"]
+    expected_outcome: { assigned_to: "Accounts Payable" }
+
+  - name: "no_po_flagged_for_procurement"
+    input: "Invoice INV-20260303 from Office Plus, EUR 320.00 for 20x Printer Toner Cartridges, due 2026-04-20"
+    context: { invoice_number: "INV-20260303" }
+    expected_path: ["extract", "match", "flag"]
+    expected_tools: ["extract_invoice_data", "match_purchase_order", "flag_for_review"]
+    expected_outcome: { assigned_to: "Procurement" }
+
+providers:
+  - name: "openai"
+    model: "gpt-4o"
+  - name: "anthropic"
+    model: "claude-sonnet-4-20250514"
+  - name: "google"
+    model: "gemini-2.0-flash"
+
+scoring:
+  runs_per_scenario: 5

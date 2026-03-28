@@ -1,0 +1,352 @@
+# =============================================================================
+# Agent Definition Language (ADL) – JSON Schema (YAML Format)
+# Version: 1.0.0
+# =============================================================================
+# This schema describes the structure of an Agent Definition Language (ADL)
+# YAML file. It can be used for validation and as repository documentation.
+#
+# Compatible with: JSON Schema Draft-07
+# Usage in VS Code:
+#   Add the following line to the top of your ADL file:
+#   # yaml-language-server: $schema=./agent-definition-schema.yml
+# =============================================================================
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "agent-definition-schema.yml"
+title: "Agent Definition Language (ADL)"
+description: >
+  Schema for defining an AI agent with tools, flow logic,
+  test scenarios, LLM providers and scoring configuration.
+type: object
+required:
+  - agent
+  - tools
+  - flow
+
+# =============================================================================
+# PROPERTIES
+# =============================================================================
+properties:
+
+  # ---------------------------------------------------------------------------
+  # AGENT – Metadata & Behavior
+  # ---------------------------------------------------------------------------
+  agent:
+    type: object
+    description: "Core metadata and behavior definition of the agent."
+    required:
+      - name
+      - description
+      - instruction
+    properties:
+      name:
+        type: string
+        description: "Display name of the agent."
+        example: "IT Helpdesk Triage"
+
+      description:
+        type: string
+        description: "Short description of the agent's task and purpose."
+        example: "Classifies IT tickets, checks known issues, resolves or escalates."
+
+      instruction:
+        type: string
+        description: >
+          System prompt of the agent. Defines role, tone and behavior.
+          Sent as a system message on every LLM call.
+        example: "You classify IT tickets in the helpdesk."
+
+    additionalProperties: false
+
+
+  # ---------------------------------------------------------------------------
+  # TOOLS – Agent capabilities
+  # ---------------------------------------------------------------------------
+  tools:
+    type: array
+    description: >
+      List of all tools (functions/APIs) the agent can invoke.
+      Each tool defines its interface and optional mock data.
+    minItems: 1
+    items:
+      type: object
+      required:
+        - name
+        - description
+        - input
+        - output
+      properties:
+
+        name:
+          type: string
+          description: >
+            Unique, machine-readable identifier of the tool.
+            Used as a reference in `flow`.
+          pattern: "^[a-z][a-z0-9_]*$"
+          example: "classify_ticket"
+
+        description:
+          type: string
+          description: "Description of what the tool does – passed to the LLM as context."
+          example: "Classifies the ticket by category and urgency."
+
+        input:
+          type: object
+          description: >
+            Input parameters of the tool as a key-value map.
+            Key = parameter name, Value = data type as string.
+          additionalProperties:
+            type: string
+            enum: [string, number, boolean, object, array]
+            description: "Data type of the parameter."
+          example:
+            ticket_text: "string"
+            user_id: "string"
+
+        output:
+          type: object
+          description: >
+            Output parameters of the tool as a key-value map.
+            Key = field name, Value = data type as string.
+          additionalProperties:
+            type: string
+            enum: [string, number, boolean, object, array]
+            description: "Data type of the output field."
+          example:
+            category: "string"
+            priority: "string"
+            confidence: "number"
+
+        mock:
+          type: array
+          description: >
+            Optional mock data for testing and local development.
+            The agent matches the appropriate mock based on the `input` object.
+          items:
+            type: object
+            required:
+              - input
+              - output
+            properties:
+              input:
+                type: object
+                description: "Concrete input object for this mock case."
+                additionalProperties: true
+              output:
+                type: object
+                description: "Expected output object for this mock case."
+                additionalProperties: true
+            additionalProperties: false
+
+      additionalProperties: false
+
+
+  # ---------------------------------------------------------------------------
+  # FLOW – Execution logic
+  # ---------------------------------------------------------------------------
+  flow:
+    type: array
+    description: >
+      Ordered list of steps that define the agent's execution flow.
+      Steps are executed sequentially; condition steps control
+      branching logic.
+    minItems: 1
+    items:
+      type: object
+      required:
+        - step
+      properties:
+
+        step:
+          type: string
+          description: >
+            Unique name of the step. Referenced by other steps
+            in `input_from` and conditions.
+          pattern: "^[a-z][a-z0-9_]*$"
+          example: "classify"
+
+        tool:
+          type: string
+          description: >
+            Reference to a tool defined in `tools` (via `name`).
+            Omitted when the step contains routing logic only.
+          example: "classify_ticket"
+
+        input_from:
+          type: string
+          description: >
+            Data source for the tool input.
+            Either `user_input` (initial user message) or
+            the name of a preceding step.
+          example: "classify"
+
+        condition:
+          type: object
+          description: >
+            Conditional routing. Evaluates an expression and
+            branches to `then` or `else`.
+          required:
+            - if
+            - then
+            - else
+          properties:
+            if:
+              type: string
+              description: >
+                Expression to evaluate.
+                Format: `<step>.<path> == <value>`
+                Supported operators: ==, !=, >, <, >=, <=
+              example: "knowledge_search.output.found == true"
+            then:
+              type: string
+              description: "Name of the next step if the expression evaluates to `true`."
+              example: "auto_resolve"
+            else:
+              type: string
+              description: "Name of the next step if the expression evaluates to `false`."
+              example: "escalate"
+          additionalProperties: false
+
+      additionalProperties: false
+
+
+  # ---------------------------------------------------------------------------
+  # SCENARIOS – Test scenarios
+  # ---------------------------------------------------------------------------
+  scenarios:
+    type: array
+    description: >
+      Optional end-to-end test scenarios for validating the agent.
+      Each scenario simulates a complete execution and verifies
+      the path, tool calls and outcome.
+    items:
+      type: object
+      required:
+        - name
+        - input
+        - expected_tools
+        - expected_outcome
+      properties:
+
+        name:
+          type: string
+          description: "Unique, descriptive name of the test scenario."
+          example: "known_issue_auto_resolved"
+
+        input:
+          type: string
+          description: "Simulated user input that triggers the scenario."
+          example: "Cannot log in to SAP, getting error 500"
+
+        context:
+          type: object
+          description: >
+            Optional context available alongside the user input
+            (e.g. ticket ID, user ID, session data).
+          additionalProperties: true
+          example:
+            ticket_id: "INC-4471"
+
+        expected_path:
+          type: array
+          description: "Expected sequence of executed steps (via `step` names)."
+          items:
+            type: string
+          example: ["classify", "knowledge_search", "auto_resolve"]
+
+        expected_tools:
+          type: array
+          description: "Expected list of invoked tools (via `name`)."
+          items:
+            type: string
+          example: ["classify_ticket", "search_knowledge_base", "send_auto_response"]
+
+        expected_outcome:
+          type: object
+          description: >
+            Expected result as a subset of the final tool output.
+            Only the specified fields are checked against the actual value
+            (partial match).
+          additionalProperties: true
+          example:
+            sent: true
+
+        mock_override:
+          type: object
+          description: >
+            Selectively overrides mock outputs of individual tools for this scenario only.
+            Key = tool name, Value = object with an `output` field.
+          additionalProperties:
+            type: object
+            required:
+              - output
+            properties:
+              output:
+                type: object
+                additionalProperties: true
+          example:
+            search_knowledge_base:
+              output:
+                found: false
+                solution: ""
+                article_id: ""
+
+      additionalProperties: false
+
+
+  # ---------------------------------------------------------------------------
+  # PROVIDERS – LLM providers & models
+  # ---------------------------------------------------------------------------
+  providers:
+    type: array
+    description: >
+      List of LLM providers and models against which the agent is executed
+      and evaluated. With multiple entries the agent is tested
+      on all models in parallel.
+    items:
+      type: object
+      required:
+        - name
+        - model
+      properties:
+
+        name:
+          type: string
+          description: "Name of the LLM provider."
+          enum: [openai, anthropic, azure, ollama, mistral, google, cohere]
+          example: "anthropic"
+
+        model:
+          type: string
+          description: >
+            Model identifier exactly as expected by the provider.
+            Examples: `gpt-4o`, `claude-sonnet-4-20250514`, `llama3:8b`
+          example: "claude-sonnet-4-20250514"
+
+        base_url:
+          type: string
+          format: uri
+          description: >
+            Optional custom endpoint URL (e.g. for self-hosted Ollama
+            or Azure OpenAI deployments).
+          example: "http://localhost:11434"
+ 
+      additionalProperties: false
+
+
+  # ---------------------------------------------------------------------------
+  # SCORING – Evaluation configuration
+  # ---------------------------------------------------------------------------
+  scoring:
+    type: object
+    description: "Configuration for evaluating test scenarios."
+    properties:
+
+      runs_per_scenario:
+        type: integer
+        description: "Number of repetitions per scenario."
+        example: 5
+
+    additionalProperties: false
+
+additionalProperties: false

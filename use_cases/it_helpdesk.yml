@@ -1,0 +1,106 @@
+agent:
+  name: "IT Helpdesk Triage"
+  description: "Klassifiziert IT-Tickets, prüft Known Issues, löst oder eskaliert"
+  instruction: "Du klassifizierst IT-Tickets im Helpdesk."
+
+tools:
+  - name: "classify_ticket"
+    description: "Klassifiziert das Ticket nach Kategorie und Dringlichkeit"
+    input: { ticket_text: "string" }
+    output: { category: "string", priority: "string", confidence: "number" }
+    mock:
+      - input: { ticket_text: "Kann mich nicht in SAP einloggen, kommt Fehler 500" }
+        output: { category: "access_management", priority: "high", confidence: 0.92 }
+      - input: { ticket_text: "Outlook stürzt ab wenn ich große Anhänge öffne" }
+        output: { category: "software_issue", priority: "medium", confidence: 0.87 }
+      - input: { ticket_text: "Brauche einen zweiten Monitor für Homeoffice" }
+        output: { category: "hardware_request", priority: "low", confidence: 0.95 }
+
+  - name: "search_knowledge_base"
+    description: "Sucht in der Known-Issues-Datenbank nach Lösungen"
+    input: { category: "string", ticket_text: "string" }
+    output: { found: "boolean", solution: "string", article_id: "string" }
+    mock:
+      - input: { category: "access_management", ticket_text: "Kann mich nicht in SAP einloggen, kommt Fehler 500" }
+        output: { found: true, solution: "SAP-Passwort über Portal zurücksetzen, Cache leeren", article_id: "KB-1042" }
+      - input: { category: "software_issue", ticket_text: "Outlook stürzt ab wenn ich große Anhänge öffne" }
+        output: { found: false, solution: "", article_id: "" }
+
+  - name: "send_auto_response"
+    description: "Sendet automatische Lösungsantwort an den User"
+    input: { ticket_id: "string", solution: "string", article_id: "string" }
+    output: { sent: "boolean", response_id: "string" }
+    mock:
+      - input: { ticket_id: "INC-4471", solution: "SAP-Passwort über Portal zurücksetzen, Cache leeren", article_id: "KB-1042" }
+        output: { sent: true, response_id: "RESP-2201" }
+
+  - name: "escalate_to_team"
+    description: "Eskaliert das Ticket an das zuständige Team"
+    input: { ticket_id: "string", category: "string", priority: "string", context: "string" }
+    output: { assigned_team: "string", escalation_id: "string" }
+    mock:
+      - input: { ticket_id: "INC-4472", category: "software_issue", priority: "medium", context: "Outlook stürzt ab wenn ich große Anhänge öffne" }
+        output: { assigned_team: "Desktop Support", escalation_id: "ESC-0334" }
+      - input: { ticket_id: "INC-4473", category: "hardware_request", priority: "low", context: "Brauche einen zweiten Monitor für Homeoffice" }
+        output: { assigned_team: "Procurement", escalation_id: "ESC-0335" }
+
+flow:
+  - step: "classify"
+    tool: "classify_ticket"
+    input_from: "user_input"
+
+  - step: "knowledge_search"
+    tool: "search_knowledge_base"
+    input_from: "classify"
+
+  - step: "route"
+    condition:
+      if: "knowledge_search.output.found == true"
+      then: "auto_resolve"
+      else: "escalate"
+
+  - step: "auto_resolve"
+    tool: "send_auto_response"
+    input_from: "knowledge_search"
+
+  - step: "escalate"
+    tool: "escalate_to_team"
+    input_from: "classify"
+
+scenarios:
+  - name: "known_issue_auto_resolved"
+    input: "Kann mich nicht in SAP einloggen, kommt Fehler 500"
+    context: { ticket_id: "INC-4471" }
+    expected_path: ["classify", "knowledge_search", "auto_resolve"]
+    expected_tools: ["classify_ticket", "search_knowledge_base", "send_auto_response"]
+    expected_outcome: { sent: true}
+
+  - name: "unknown_issue_escalated"
+    input: "Outlook stürzt ab wenn ich große Anhänge öffne"
+    context: { ticket_id: "INC-4472" }
+    expected_path: ["classify", "knowledge_search", "escalate"]
+    expected_tools: ["classify_ticket", "search_knowledge_base", "escalate_to_team"]
+    expected_outcome: { assigned_team: "Desktop Support" }
+
+  - name: "hardware_request_direct_escalation"
+    input: "Brauche einen zweiten Monitor für Homeoffice"
+    context: { ticket_id: "INC-4473" }
+    mock_override:
+      search_knowledge_base:
+        output: { found: false, solution: "", article_id: "" }
+    expected_path: ["classify", "knowledge_search", "escalate"]
+    expected_tools: ["classify_ticket", "search_knowledge_base", "escalate_to_team"]
+    expected_outcome: { assigned_team: "Procurement" }
+
+providers:
+  - name: "openai"
+    model: "gpt-4o"
+  - name: "anthropic"
+    model: "claude-sonnet-4-20250514"
+  - name: "openai"
+    model: "gpt-5.2"
+  - name: "ollama"
+    model: "ministral-3:14b"
+
+scoring:
+  runs_per_scenario: 5

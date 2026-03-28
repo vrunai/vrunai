@@ -1,0 +1,117 @@
+agent:
+  name: "HR Onboarding"
+  description: "Validates new hire data, provisions accounts and equipment, or escalates incomplete cases to HR"
+  instruction: "You assist with employee onboarding. Validate the new hire's information, provision their IT accounts and equipment, and send a welcome email. If required information is missing or invalid, escalate to HR."
+
+tools:
+  - name: "validate_employee"
+    description: "Validates the new hire's data completeness and contract status"
+    input: { employee_name: "string", start_date: "string", department: "string" }
+    output: { valid: "boolean", employee_id: "string", contract_type: "string", missing_fields: "string" }
+    mock:
+      - input: { employee_name: "Maria Müller", start_date: "2026-04-01", department: "Engineering" }
+        output: { valid: true, employee_id: "EMP-2201", contract_type: "permanent", missing_fields: "" }
+      - input: { employee_name: "Jonas Weber", start_date: "2026-04-01", department: "Sales" }
+        output: { valid: true, employee_id: "EMP-2202", contract_type: "contractor", missing_fields: "" }
+      - input: { employee_name: "Anna Schmidt", start_date: "", department: "Marketing" }
+        output: { valid: false, employee_id: "", contract_type: "", missing_fields: "start_date" }
+
+  - name: "provision_accounts"
+    description: "Creates IT accounts (email, Slack, GitHub) for the new employee"
+    input: { employee_id: "string", department: "string", contract_type: "string" }
+    output: { provisioned: "boolean", email: "string", accounts_created: "string" }
+    mock:
+      - input: { employee_id: "EMP-2201", department: "Engineering", contract_type: "permanent" }
+        output: { provisioned: true, email: "m.mueller@company.com", accounts_created: "email,slack,github,jira" }
+      - input: { employee_id: "EMP-2202", department: "Sales", contract_type: "contractor" }
+        output: { provisioned: true, email: "j.weber@contractors.company.com", accounts_created: "email,slack" }
+
+  - name: "assign_equipment"
+    description: "Assigns and ships the appropriate hardware kit to the employee"
+    input: { employee_id: "string", contract_type: "string", department: "string" }
+    output: { assigned: "boolean", kit: "string", shipping_id: "string", delivery_date: "string" }
+    mock:
+      - input: { employee_id: "EMP-2201", contract_type: "permanent", department: "Engineering" }
+        output: { assigned: true, kit: "MacBook Pro 16, Monitor, Keyboard, Mouse", shipping_id: "SHP-9901", delivery_date: "2026-03-28" }
+      - input: { employee_id: "EMP-2202", contract_type: "contractor", department: "Sales" }
+        output: { assigned: true, kit: "MacBook Air 13", shipping_id: "SHP-9902", delivery_date: "2026-03-29" }
+
+  - name: "send_welcome_email"
+    description: "Sends the welcome email with account details and onboarding schedule"
+    input: { employee_id: "string", email: "string", start_date: "string" }
+    output: { sent: "boolean", message_id: "string" }
+    mock:
+      - input: { employee_id: "EMP-2201", email: "m.mueller@company.com", start_date: "2026-04-01" }
+        output: { sent: true, message_id: "MSG-4401" }
+      - input: { employee_id: "EMP-2202", email: "j.weber@contractors.company.com", start_date: "2026-04-01" }
+        output: { sent: true, message_id: "MSG-4402" }
+
+  - name: "escalate_to_hr"
+    description: "Escalates the onboarding case to HR due to missing or invalid information"
+    input: { employee_name: "string", reason: "string", missing_fields: "string" }
+    output: { ticket_id: "string", assigned_to: "string" }
+    mock:
+      - input: { employee_name: "Anna Schmidt", reason: "Missing required fields", missing_fields: "start_date" }
+        output: { ticket_id: "HR-0881", assigned_to: "HR Operations" }
+
+flow:
+  - step: "validate"
+    tool: "validate_employee"
+    input_from: "user_input"
+
+  - step: "route"
+    condition:
+      if: "validate.output.valid == true"
+      then: "provision"
+      else: "escalate"
+
+  - step: "provision"
+    tool: "provision_accounts"
+    input_from: "validate"
+
+  - step: "equipment"
+    tool: "assign_equipment"
+    input_from: "validate"
+
+  - step: "welcome"
+    tool: "send_welcome_email"
+    input_from: "provision"
+
+  - step: "escalate"
+    tool: "escalate_to_hr"
+    input_from: "validate"
+
+scenarios:
+  - name: "permanent_employee_full_onboarding"
+    input: "Onboard Maria Müller, starting 2026-04-01, Engineering department"
+    context: { employee_name: "Maria Müller", start_date: "2026-04-01", department: "Engineering" }
+    expected_path: ["validate", "provision", "equipment", "welcome"]
+    expected_tools: ["validate_employee", "provision_accounts", "assign_equipment", "send_welcome_email"]
+    expected_outcome: { sent: true }
+
+  - name: "contractor_limited_onboarding"
+    input: "Onboard Jonas Weber, contractor, starting 2026-04-01, Sales"
+    context: { employee_name: "Jonas Weber", start_date: "2026-04-01", department: "Sales" }
+    expected_path: ["validate", "provision", "equipment", "welcome"]
+    expected_tools: ["validate_employee", "provision_accounts", "assign_equipment", "send_welcome_email"]
+    expected_outcome: { sent: true }
+
+  - name: "incomplete_data_escalated"
+    input: "Onboard Anna Schmidt, Marketing department, no start date yet"
+    context: { employee_name: "Anna Schmidt", start_date: "", department: "Marketing" }
+    expected_path: ["validate", "escalate"]
+    expected_tools: ["validate_employee", "escalate_to_hr"]
+    expected_outcome: { assigned_to: "HR Operations" }
+
+providers:
+  - name: "openai"
+    model: "gpt-4o"
+  - name: "openai"
+    model: "gpt-5.2"
+  - name: "anthropic"
+    model: "claude-sonnet-4-20250514"
+  - name: "google"
+    model: "gemini-2.0-flash"
+
+scoring:
+  runs_per_scenario: 5

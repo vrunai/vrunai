@@ -1,0 +1,119 @@
+agent:
+  name: "Expense Approval"
+  description: "Validates expense reports, checks policy compliance, auto-approves or routes to manager"
+  instruction: "You process employee expense reports. Classify the expense, check it against company policy, then either auto-approve, request manager sign-off, or reject it with a reason."
+
+tools:
+  - name: "classify_expense"
+    description: "Classifies the expense by category and extracts key fields"
+    input: { description: "string" }
+    output: { category: "string", amount: "number", currency: "string", confidence: "number" }
+    mock:
+      - input: { description: "Team lunch at Ristorante Roma, 8 people, EUR 184.00" }
+        output: { category: "meals_entertainment", amount: 184.00, currency: "EUR", confidence: 0.97 }
+      - input: { description: "Flight Berlin–London return for client meeting, GBP 620.00" }
+        output: { category: "travel", amount: 620.00, currency: "GBP", confidence: 0.95 }
+      - input: { description: "Standing desk for home office, EUR 1200.00" }
+        output: { category: "equipment", amount: 1200.00, currency: "EUR", confidence: 0.93 }
+
+  - name: "check_policy"
+    description: "Checks the expense against company policy limits and returns a compliance decision"
+    input: { category: "string", amount: "number", currency: "string", employee_id: "string" }
+    output: { compliant: "boolean", decision: "string", limit: "number", reason: "string" }
+    mock:
+      - input: { category: "meals_entertainment", amount: 184.00, currency: "EUR", employee_id: "EMP-0421" }
+        output: { compliant: true, decision: "auto_approve", limit: 250.00, reason: "" }
+      - input: { category: "travel", amount: 620.00, currency: "GBP", employee_id: "EMP-0872" }
+        output: { compliant: true, decision: "manager_approval", limit: 500.00, reason: "Exceeds auto-approve threshold" }
+      - input: { category: "equipment", amount: 1200.00, currency: "EUR", employee_id: "EMP-1105" }
+        output: { compliant: false, decision: "reject", limit: 800.00, reason: "Exceeds equipment policy limit" }
+
+  - name: "auto_approve"
+    description: "Automatically approves the expense and triggers reimbursement"
+    input: { expense_id: "string", employee_id: "string", amount: "number", category: "string" }
+    output: { approved: "boolean", reimbursement_id: "string", payout_date: "string" }
+    mock:
+      - input: { expense_id: "EXP-3301", employee_id: "EMP-0421", amount: 184.00, category: "meals_entertainment" }
+        output: { approved: true, reimbursement_id: "RMB-8801", payout_date: "2026-03-14" }
+
+  - name: "request_manager_approval"
+    description: "Sends the expense to the employee's manager for manual approval"
+    input: { expense_id: "string", employee_id: "string", manager_id: "string", reason: "string" }
+    output: { submitted: "boolean", approval_request_id: "string", deadline: "string" }
+    mock:
+      - input: { expense_id: "EXP-3302", employee_id: "EMP-0872", manager_id: "MGR-0110", reason: "Exceeds auto-approve threshold" }
+        output: { submitted: true, approval_request_id: "APR-0044", deadline: "2026-03-10" }
+
+  - name: "reject_expense"
+    description: "Rejects the expense and notifies the employee with a reason"
+    input: { expense_id: "string", employee_id: "string", reason: "string" }
+    output: { rejected: "boolean", notification_sent: "boolean" }
+    mock:
+      - input: { expense_id: "EXP-3303", employee_id: "EMP-1105", reason: "Exceeds equipment policy limit" }
+        output: { rejected: true, notification_sent: true }
+
+flow:
+  - step: "classify"
+    tool: "classify_expense"
+    input_from: "user_input"
+
+  - step: "policy_check"
+    tool: "check_policy"
+    input_from: "classify"
+
+  - step: "route"
+    condition:
+      if: "policy_check.output.compliant == true"
+      then: "route_approved"
+      else: "reject"
+
+  - step: "route_approved"
+    condition:
+      if: "policy_check.output.decision == 'auto_approve'"
+      then: "approve"
+      else: "manager_review"
+
+  - step: "approve"
+    tool: "auto_approve"
+    input_from: "policy_check"
+
+  - step: "manager_review"
+    tool: "request_manager_approval"
+    input_from: "policy_check"
+
+  - step: "reject"
+    tool: "reject_expense"
+    input_from: "policy_check"
+
+scenarios:
+  - name: "small_meal_auto_approved"
+    input: "Team lunch at Ristorante Roma, 8 people, EUR 184.00"
+    context: { expense_id: "EXP-3301", employee_id: "EMP-0421", manager_id: "MGR-0110" }
+    expected_path: ["classify", "policy_check", "route_approved", "approve"]
+    expected_tools: ["classify_expense", "check_policy", "auto_approve"]
+    expected_outcome: { approved: true }
+
+  - name: "large_travel_manager_review"
+    input: "Flight Berlin–London return for client meeting, GBP 620.00"
+    context: { expense_id: "EXP-3302", employee_id: "EMP-0872", manager_id: "MGR-0110" }
+    expected_path: ["classify", "policy_check", "route_approved", "manager_review"]
+    expected_tools: ["classify_expense", "check_policy", "request_manager_approval"]
+    expected_outcome: { submitted: true }
+
+  - name: "expensive_equipment_rejected"
+    input: "Standing desk for home office, EUR 1200.00"
+    context: { expense_id: "EXP-3303", employee_id: "EMP-1105", manager_id: "MGR-0220" }
+    expected_path: ["classify", "policy_check", "reject"]
+    expected_tools: ["classify_expense", "check_policy", "reject_expense"]
+    expected_outcome: { rejected: true }
+
+providers:
+  - name: "openai"
+    model: "gpt-4o"
+  - name: "anthropic"
+    model: "claude-sonnet-4-20250514"
+  - name: "google"
+    model: "gemini-2.0-flash"
+
+scoring:
+  runs_per_scenario: 50

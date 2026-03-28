@@ -1,0 +1,109 @@
+agent:
+  name: "Security Incident Triage"
+  description: "Classifies security alerts, enriches with threat intelligence, auto-mitigates known threats or escalates to the SOC team"
+  instruction: "You triage security alerts from our SIEM. Classify the alert severity, enrich it with threat intelligence, and either trigger automated containment for known threats or escalate to the SOC team for investigation."
+
+tools:
+  - name: "classify_alert"
+    description: "Classifies the security alert by type, severity, and affected systems"
+    input: { alert_message: "string" }
+    output: { alert_type: "string", severity: "string", affected_system: "string", confidence: "number" }
+    mock:
+      - input: { alert_message: "Multiple failed SSH login attempts from 203.0.113.42 on prod-db-01, 847 attempts in 10 minutes" }
+        output: { alert_type: "brute_force", severity: "high", affected_system: "prod-db-01", confidence: 0.96 }
+      - input: { alert_message: "Outbound data transfer spike detected on workstation WS-0145, 12GB uploaded to external IP 198.51.100.7" }
+        output: { alert_type: "data_exfiltration", severity: "critical", affected_system: "WS-0145", confidence: 0.89 }
+      - input: { alert_message: "Expired SSL certificate detected on api.internal.company.com, certificate expired 2026-03-20" }
+        output: { alert_type: "certificate_expiry", severity: "medium", affected_system: "api.internal.company.com", confidence: 0.99 }
+
+  - name: "enrich_threat_intel"
+    description: "Enriches the alert with threat intelligence data from internal and external feeds"
+    input: { alert_type: "string", affected_system: "string", alert_message: "string" }
+    output: { known_threat: "boolean", threat_name: "string", ioc_matched: "boolean", recommended_action: "string", risk_score: "number" }
+    mock:
+      - input: { alert_type: "brute_force", affected_system: "prod-db-01", alert_message: "Multiple failed SSH login attempts from 203.0.113.42 on prod-db-01, 847 attempts in 10 minutes" }
+        output: { known_threat: true, threat_name: "SSH Brute Force - Known Botnet C2", ioc_matched: true, recommended_action: "block_ip", risk_score: 85 }
+      - input: { alert_type: "data_exfiltration", affected_system: "WS-0145", alert_message: "Outbound data transfer spike detected on workstation WS-0145, 12GB uploaded to external IP 198.51.100.7" }
+        output: { known_threat: false, threat_name: "", ioc_matched: false, recommended_action: "investigate", risk_score: 92 }
+      - input: { alert_type: "certificate_expiry", affected_system: "api.internal.company.com", alert_message: "Expired SSL certificate detected on api.internal.company.com, certificate expired 2026-03-20" }
+        output: { known_threat: false, threat_name: "", ioc_matched: false, recommended_action: "renew_certificate", risk_score: 40 }
+
+  - name: "auto_mitigate"
+    description: "Executes automated containment actions for known threats"
+    input: { alert_id: "string", affected_system: "string", action: "string" }
+    output: { executed: "boolean", action_taken: "string", mitigation_id: "string" }
+    mock:
+      - input: { alert_id: "ALT-90021", affected_system: "prod-db-01", action: "block_ip" }
+        output: { executed: true, action_taken: "Blocked IP 203.0.113.42 on firewall, disabled SSH password auth on prod-db-01", mitigation_id: "MIT-3301" }
+      - input: { alert_id: "ALT-90023", affected_system: "api.internal.company.com", action: "renew_certificate" }
+        output: { executed: true, action_taken: "Triggered automatic certificate renewal via ACME, new cert valid until 2027-03-25", mitigation_id: "MIT-3302" }
+
+  - name: "escalate_to_soc"
+    description: "Escalates the alert to the SOC team for manual investigation"
+    input: { alert_id: "string", severity: "string", alert_type: "string", summary: "string", risk_score: "number" }
+    output: { incident_id: "string", assigned_team: "string", priority: "string" }
+    mock:
+      - input: { alert_id: "ALT-90022", severity: "critical", alert_type: "data_exfiltration", summary: "Potential data exfiltration from WS-0145, unknown threat, 12GB outbound transfer", risk_score: 92 }
+        output: { incident_id: "INC-SEC-0447", assigned_team: "SOC Tier 2", priority: "P1" }
+
+flow:
+  - step: "classify"
+    tool: "classify_alert"
+    input_from: "user_input"
+
+  - step: "enrich"
+    tool: "enrich_threat_intel"
+    input_from: "classify"
+
+  - step: "route"
+    condition:
+      if: "enrich.output.known_threat == true"
+      then: "mitigate"
+      else: "route_severity"
+
+  - step: "mitigate"
+    tool: "auto_mitigate"
+    input_from: "enrich"
+
+  - step: "route_severity"
+    condition:
+      if: "enrich.output.risk_score > 70"
+      then: "escalate"
+      else: "mitigate"
+
+  - step: "escalate"
+    tool: "escalate_to_soc"
+    input_from: "enrich"
+
+scenarios:
+  - name: "known_brute_force_auto_blocked"
+    input: "Multiple failed SSH login attempts from 203.0.113.42 on prod-db-01, 847 attempts in 10 minutes"
+    context: { alert_id: "ALT-90021" }
+    expected_path: ["classify", "enrich", "mitigate"]
+    expected_tools: ["classify_alert", "enrich_threat_intel", "auto_mitigate"]
+    expected_outcome: { executed: true }
+
+  - name: "unknown_exfiltration_escalated_to_soc"
+    input: "Outbound data transfer spike detected on workstation WS-0145, 12GB uploaded to external IP 198.51.100.7"
+    context: { alert_id: "ALT-90022" }
+    expected_path: ["classify", "enrich", "route_severity", "escalate"]
+    expected_tools: ["classify_alert", "enrich_threat_intel", "escalate_to_soc"]
+    expected_outcome: { assigned_team: "SOC Tier 2" }
+
+  - name: "expired_cert_auto_renewed"
+    input: "Expired SSL certificate detected on api.internal.company.com, certificate expired 2026-03-20"
+    context: { alert_id: "ALT-90023" }
+    expected_path: ["classify", "enrich", "route_severity", "mitigate"]
+    expected_tools: ["classify_alert", "enrich_threat_intel", "auto_mitigate"]
+    expected_outcome: { executed: true }
+
+providers:
+  - name: "openai"
+    model: "gpt-4o"
+  - name: "anthropic"
+    model: "claude-sonnet-4-20250514"
+  - name: "google"
+    model: "gemini-2.0-flash"
+
+scoring:
+  runs_per_scenario: 5
