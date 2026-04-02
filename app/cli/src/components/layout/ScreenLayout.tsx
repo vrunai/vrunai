@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { symbols, spacing } from '../../theme.js';
+import { symbols } from '../../theme.js';
 import { StatusBar } from '../primitives/StatusBar.js';
+import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type { StatusBarItem } from '../primitives/StatusBar.js';
 
 export function ScreenLayout({
@@ -15,8 +16,10 @@ export function ScreenLayout({
     statusLeft?: string;
     children: React.ReactNode;
 }) {
+    const { rows } = useTerminalSize();
+
     return (
-        <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="column" height={rows} paddingX={1}>
             {/* Breadcrumb header */}
             <Box paddingTop={1} paddingLeft={1} gap={1}>
                 <Text dimColor>VRUNAI</Text>
@@ -24,12 +27,12 @@ export function ScreenLayout({
                 <Text bold>{title}</Text>
             </Box>
 
-            {/* Content area */}
-            <Box flexDirection="column" paddingTop={1}>
+            {/* Content area — fills available space, clips overflow */}
+            <Box flexDirection="column" flexGrow={1} paddingTop={1} overflowY="hidden">
                 {children}
             </Box>
 
-            {/* Persistent status bar */}
+            {/* Persistent status bar — pinned to bottom */}
             <StatusBar items={helpItems} left={statusLeft} />
         </Box>
     );

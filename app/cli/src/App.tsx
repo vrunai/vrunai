@@ -14,6 +14,7 @@ import { Badge, Bar, Pct, Panel, Separator, StatusBar, StatusIcon, KeyValue, Men
 import { ScreenLayout } from './components/layout/ScreenLayout.js';
 import { useSpinner } from './hooks/useSpinner.js';
 import { useElapsed, fmtElapsed } from './hooks/useElapsed.js';
+import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { colors, symbols, spacing, borders, msStr, maskApiKey, truncate, fmtCost } from './theme.js';
 import { loadConfig, addProvider, deleteProvider, addRecentPath, getRecentPaths, type SavedProvider } from './config.js';
 
@@ -72,7 +73,7 @@ function ScenarioRow({ name, progress, spinner }: { name: string; progress: Scen
     return (
         <Box gap={1}>
             <Box width={2}><StatusIcon state={state} spinner={spinner} /></Box>
-            <Box width={32}><Text>{truncate(name, 32)}</Text></Box>
+            <Box width={32}><Text wrap="truncate">{truncate(name, 32)}</Text></Box>
             <Bar done={done} total={total} />
             <Text dimColor>  {done}/{total}</Text>
         </Box>
@@ -82,6 +83,7 @@ function ScenarioRow({ name, progress, spinner }: { name: string; progress: Scen
 // ── Step: Menu ────────────────────────────────────────────────────────────────
 
 function MenuStep({ onSelect }: { onSelect: (value: string) => void }) {
+    const { rows } = useTerminalSize();
     const config = loadConfig();
     const providerCount = config.providers.length;
     const providerNames = config.providers.slice(0, 3).map(p => p.name).join(', ');
@@ -98,24 +100,22 @@ function MenuStep({ onSelect }: { onSelect: (value: string) => void }) {
     ];
 
     return (
-        <Box flexDirection="column" paddingX={1}>
-            <Box paddingLeft={spacing.sm}>
-                <Text dimColor>Validate & Run AI Agents</Text>
-                <Spacer />
-                <Text dimColor>v{PKG_VERSION}</Text>
-            </Box>
-            <Panel>
-                <MenuSelect items={menuItems} onSelect={onSelect} />
-            </Panel>
-            {(providerCount > 0 || lastRun) && (
-                <Panel title="Quick Status" titleColor={colors.muted}>
-                    <Box>
-                        {providerCount > 0 && <Text dimColor>Providers: {providerNames}</Text>}
-                        <Spacer />
-                        {lastRun && <Text dimColor>Last run: {lastRun.savedAt}</Text>}
-                    </Box>
+        <Box flexDirection="column" height={rows} paddingX={1}>
+            <Logo />
+            <Box flexDirection="column" flexGrow={1}>
+                <Panel>
+                    <MenuSelect items={menuItems} onSelect={onSelect} />
                 </Panel>
-            )}
+                {(providerCount > 0 || lastRun) && (
+                    <Panel title="Quick Status" titleColor={colors.muted}>
+                        <Box>
+                            {providerCount > 0 && <Text dimColor>Providers: {providerNames}</Text>}
+                            <Spacer />
+                            {lastRun && <Text dimColor>Last run: {lastRun.savedAt}</Text>}
+                        </Box>
+                    </Panel>
+                )}
+            </Box>
             <StatusBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'q', action: 'quit' }]} />
         </Box>
     );
@@ -227,9 +227,9 @@ function ProvidersDetailStep({
     return (
         <ScreenLayout title="Provider Detail"
             helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
-            <Panel title={provider.name} titleColor={colors.focus}>
+            <Panel title={provider.name} titleColor={colors.accent}>
                 <KeyValue label="Provider:">{provider.kind === 'predefined' ? provider.preset : 'custom'}</KeyValue>
-                <KeyValue label="Model:"><Text color={colors.focus}>{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></KeyValue>
+                <KeyValue label="Model:"><Text color={colors.accent}>{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></KeyValue>
                 <KeyValue label="Base URL:">{provider.baseUrl}</KeyValue>
                 <KeyValue label="API key:">{maskApiKey(provider.apiKey)}</KeyValue>
             </Panel>
@@ -725,7 +725,7 @@ function RunningStep({
             <Text dimColor>{spec.agent.name}  {symbols.dot}  {runsPerScenario} runs/scenario</Text>
 
             {/* Overall progress panel */}
-            <Panel title="Overall" titleColor={colors.focus} borderColor={colors.focus}>
+            <Panel title="Overall" titleColor={colors.accent} borderColor={colors.accent}>
                 <Bar done={doneTotal} total={totalRuns} width={Math.min(Math.max(20, (process.stdout.columns ?? 80) - 20), 60)} />
                 <Box>
                     <Text dimColor>{doneTotal}/{totalRuns} runs  ({pctDone}%)</Text>
@@ -739,7 +739,7 @@ function RunningStep({
                 const model       = provider.getConfig().model;
                 const innerMap    = progress.get(model)!;
                 return (
-                    <Panel key={model} title={model} titleColor={colors.focus}>
+                    <Panel key={model} title={model} titleColor={colors.accent}>
                         {spec.scenarios.map(s => (
                             <ScenarioRow
                                 key={s.name}
@@ -766,7 +766,7 @@ function ScenarioSummaryRow({ m, isFocused, isExpanded }: {
         <Box gap={1} paddingLeft={spacing.sm}>
             <Text color={isFocused ? colors.focus : undefined}>{isFocused ? symbols.cursor : ' '}</Text>
             <StatusIcon state={pass ? 'success' : 'error'} />
-            <Box width={30}><Text color={isFocused ? colors.focus : undefined}>{truncate(m.scenarioName, 30)}</Text></Box>
+            <Box width={30}><Text wrap="truncate" color={isFocused ? colors.focus : undefined}>{truncate(m.scenarioName, 30)}</Text></Box>
             <Pct value={m.path_accuracy} />
             <Pct value={m.tool_accuracy} />
             <Pct value={m.outcome_accuracy} />
@@ -858,7 +858,7 @@ function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav }: {
         : `run ${runIdx + 1}/${m.runs.length} ${symbols.dot} all passed`;
     const hasMultiple = m.runs.length > 1;
     return (
-        <Panel borderStyle={borders.detail} borderColor={colors.focus}>
+        <Panel borderStyle={borders.detail} borderColor={colors.accent}>
             <Box gap={1}>
                 <Text dimColor>{runLabel}</Text>
                 {hasMultiple && <Text dimColor>({symbols.back}/{symbols.arrow} runs)</Text>}
@@ -899,7 +899,7 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
     return (
         <Panel borderColor={allPass ? colors.success : colors.error}>
             <Box gap={2}>
-                <Text bold color={colors.focus}>{model}</Text>
+                <Text bold color={colors.accent}>{model}</Text>
                 <Badge text={allPass ? 'PASS' : 'FAIL'} color={allPass ? colors.success : colors.error} />
                 <Spacer />
                 <Text dimColor>{msStr(avgLatency)} avg  {symbols.dot}  {fmtCost(totalCost)}</Text>
@@ -1141,7 +1141,7 @@ function SummaryBlock({ results }: { results: { model: string; metrics: Scenario
         }
     }
     return (
-        <Panel title="Summary" borderColor={colors.focus}>
+        <Panel title="Summary" borderColor={colors.accent}>
             {lines.map((l, i) => (
                 <Text key={i} color={l.color}>{l.text}</Text>
             ))}
@@ -1413,7 +1413,7 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
 
     return (
         <ScreenLayout title="Model Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
-            <Panel title={`${model.id} — ${model.name}${titleSuffix}`} titleColor={colors.focus}>
+            <Panel title={`${model.id} — ${model.name}${titleSuffix}`} titleColor={colors.accent}>
                 <KeyValue label="Provider:">{model.provider}</KeyValue>
                 <KeyValue label="Context:">{ctx}</KeyValue>
                 <KeyValue label="Tools:">{check(model.supports_tools)}</KeyValue>
@@ -1431,10 +1431,10 @@ function AboutStep({ onBack }: { onBack: () => void }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
         <ScreenLayout title="About" helpItems={[{ key: 'Esc', action: 'back' }]}>
-            <Panel title="vrunai" titleColor={colors.focus}>
+            <Panel title="vrunai" titleColor={colors.accent}>
                 <KeyValue label="Version:">{PKG_VERSION}</KeyValue>
-                <KeyValue label="Website:"><Text color={colors.focus}>https://vrunai.com</Text></KeyValue>
-                <KeyValue label="Repository:"><Text color={colors.focus}>https://github.com/vrunai/vrunai</Text></KeyValue>
+                <KeyValue label="Website:"><Text color={colors.accent}>https://vrunai.com</Text></KeyValue>
+                <KeyValue label="Repository:"><Text color={colors.accent}>https://github.com/vrunai/vrunai</Text></KeyValue>
                 <KeyValue label="License:">AGPL-3.0</KeyValue>
             </Panel>
         </ScreenLayout>
@@ -1497,7 +1497,7 @@ function ProviderTestStep({ providerName, onDone }: { providerName: string; onDo
     return (
         <ScreenLayout title="Test Connection"
             helpItems={result ? [{ key: 'Enter', action: 'continue' }, { key: 'Esc', action: 'continue' }] : []}>
-            <Panel title={providerName} titleColor={colors.focus}
+            <Panel title={providerName} titleColor={colors.accent}
                    borderColor={result?.ok ? colors.success : result && !result.ok ? colors.error : colors.muted}>
                 {!result && <Text color={colors.warning}>{spinner} Sending test request…</Text>}
                 {result?.ok && <Text color={colors.success}>{symbols.check} Connection successful</Text>}
@@ -1610,8 +1610,6 @@ export function App() {
 
     return (
         <Box flexDirection="column" paddingX={1}>
-            {step.kind === 'menu' && <Logo />}
-
             {step.kind === 'menu' && (
                 <MenuStep onSelect={handleMenuSelect} />
             )}

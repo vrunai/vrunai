@@ -21,6 +21,7 @@ export function Panel({
             borderStyle={(borderStyle ?? borders.panel) as any}
             borderColor={borderColor ?? colors.muted}
             paddingX={1}
+            overflowY="hidden"
         >
             {title && <Text bold color={titleColor}>{title}</Text>}
             {children}

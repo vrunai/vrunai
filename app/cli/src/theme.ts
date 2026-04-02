@@ -1,14 +1,32 @@
 // ── Design Tokens ────────────────────────────────────────────────────────────
 // Centralized visual constants for the VRunAI TUI.
 
-export const colors = {
-    success:  'green',
-    error:    'red',
-    warning:  'yellow',
-    focus:    'cyan',
-    tool:     'magenta',
-    muted:    'gray',
-} as const;
+// Detect truecolor support (24-bit). Modern terminals (iTerm2, VS Code, kitty,
+// Alacritty, WezTerm, Ghostty, Windows Terminal) support it. macOS Terminal.app
+// and some older terminals do not — they get named ANSI colors instead.
+const truecolor = process.env.COLORTERM === 'truecolor' || process.env.COLORTERM === '24bit';
+
+// Hex palette derived from logo gradient (cyan → indigo → pink).
+// ANSI fallback uses named colors for maximum compatibility.
+export const colors = truecolor ? {
+    success:   '#34d399',  // soft emerald
+    error:     '#f87171',  // soft coral
+    warning:   '#fbbf24',  // warm amber
+    focus:     '#22d3ee',  // brand cyan — interactive
+    accent:    '#a78bfa',  // brand indigo — informational
+    tool:      '#c084fc',  // purple
+    muted:     '#6b7280',  // gray-500
+    highlight: '#f472b6',  // brand pink
+} : {
+    success:   'green',
+    error:     'red',
+    warning:   'yellow',
+    focus:     'cyan',
+    accent:    'magenta',
+    tool:      'magenta',
+    muted:     'gray',
+    highlight: 'magenta',
+};
 
 export const spacing = {
     xs: 1,
@@ -44,7 +62,7 @@ export const borders = {
 
 export const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
-/** Returns a semantic color for a metric value (0–1). */
+/** Returns a semantic color for a metric value (0-1). */
 export function metricColor(v: number): string {
     return v === 1 ? colors.success : v >= 0.8 ? colors.warning : colors.error;
 }
