@@ -17,10 +17,11 @@ export function MenuSelect({
 }) {
     const [focusIdx, setFocusIdx] = useState(0);
 
-    useInput((_, key) => {
+    useInput((input, key) => {
         if (key.upArrow)   setFocusIdx(i => Math.max(0, i - 1));
         if (key.downArrow) setFocusIdx(i => Math.min(items.length - 1, i + 1));
         if (key.return)    onSelect(items[focusIdx].value);
+        if (input === 'q') process.exit(0);
     });
 
     return (

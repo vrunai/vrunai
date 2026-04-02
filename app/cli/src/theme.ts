@@ -58,3 +58,13 @@ export function msStr(ms: number): string {
 export function maskApiKey(key: string): string {
     return key.length > 4 ? `···${key.slice(-4)}` : '····';
 }
+
+/** Truncate a string with ellipsis if it exceeds max length. */
+export function truncate(s: string, max: number): string {
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+/** Format a USD cost value for display. */
+export function fmtCost(usd: number): string {
+    return '$' + usd.toFixed(4);
+}

@@ -14,7 +14,7 @@ import { Badge, Bar, Pct, Panel, Separator, StatusBar, StatusIcon, KeyValue, Men
 import { ScreenLayout } from './components/layout/ScreenLayout.js';
 import { useSpinner } from './hooks/useSpinner.js';
 import { useElapsed, fmtElapsed } from './hooks/useElapsed.js';
-import { colors, symbols, spacing, borders, msStr, maskApiKey } from './theme.js';
+import { colors, symbols, spacing, borders, msStr, maskApiKey, truncate, fmtCost } from './theme.js';
 import { loadConfig, addProvider, deleteProvider, addRecentPath, getRecentPaths, type SavedProvider } from './config.js';
 
 const PKG_VERSION = '0.1.1';
@@ -72,7 +72,7 @@ function ScenarioRow({ name, progress, spinner }: { name: string; progress: Scen
     return (
         <Box gap={1}>
             <Box width={2}><StatusIcon state={state} spinner={spinner} /></Box>
-            <Box width={32}><Text>{name.slice(0, 32)}</Text></Box>
+            <Box width={32}><Text>{truncate(name, 32)}</Text></Box>
             <Bar done={done} total={total} />
             <Text dimColor>  {done}/{total}</Text>
         </Box>
@@ -168,8 +168,8 @@ function ProvidersListStep({
                     return (
                         <Box key={`p-${i}`} gap={1}>
                             <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
-                            <Box width={20}><Text color={focused ? colors.focus : undefined}>{p.name.slice(0, 19)}</Text></Box>
-                            <Box width={12}><Text dimColor={!focused}>{(p.kind === 'predefined' ? p.preset : 'custom').slice(0, 11)}</Text></Box>
+                            <Box width={20}><Text color={focused ? colors.focus : undefined}>{truncate(p.name, 19)}</Text></Box>
+                            <Box width={12}><Text dimColor={!focused}>{truncate(p.kind === 'predefined' ? p.preset : 'custom', 11)}</Text></Box>
                             <Box width={10}><Text dimColor>{maskApiKey(p.apiKey)}</Text></Box>
                         </Box>
                     );
@@ -726,7 +726,7 @@ function RunningStep({
 
             {/* Overall progress panel */}
             <Panel title="Overall" titleColor={colors.focus} borderColor={colors.focus}>
-                <Bar done={doneTotal} total={totalRuns} width={Math.max(20, (process.stdout.columns ?? 80) - 20)} />
+                <Bar done={doneTotal} total={totalRuns} width={Math.min(Math.max(20, (process.stdout.columns ?? 80) - 20), 60)} />
                 <Box>
                     <Text dimColor>{doneTotal}/{totalRuns} runs  ({pctDone}%)</Text>
                     <Spacer />
@@ -766,12 +766,12 @@ function ScenarioSummaryRow({ m, isFocused, isExpanded }: {
         <Box gap={1} paddingLeft={spacing.sm}>
             <Text color={isFocused ? colors.focus : undefined}>{isFocused ? symbols.cursor : ' '}</Text>
             <StatusIcon state={pass ? 'success' : 'error'} />
-            <Box width={30}><Text color={isFocused ? colors.focus : undefined}>{m.scenarioName.slice(0, 30)}</Text></Box>
+            <Box width={30}><Text color={isFocused ? colors.focus : undefined}>{truncate(m.scenarioName, 30)}</Text></Box>
             <Pct value={m.path_accuracy} />
             <Pct value={m.tool_accuracy} />
             <Pct value={m.outcome_accuracy} />
             <Text dimColor>{passedRuns}/{m.runs.length}</Text>
-            <Text dimColor>${m.total_cost_usd.toFixed(4)}</Text>
+            <Text dimColor>{fmtCost(m.total_cost_usd)}</Text>
             <Text dimColor>{isExpanded ? symbols.collapse : symbols.expand}</Text>
         </Box>
     );
@@ -858,7 +858,7 @@ function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav }: {
         : `run ${runIdx + 1}/${m.runs.length} ${symbols.dot} all passed`;
     const hasMultiple = m.runs.length > 1;
     return (
-        <Box flexDirection="column" paddingLeft={spacing.sm} marginTop={1} borderStyle={borders.detail} borderColor={colors.focus} paddingX={1}>
+        <Panel borderStyle={borders.detail} borderColor={colors.focus}>
             <Box gap={1}>
                 <Text dimColor>{runLabel}</Text>
                 {hasMultiple && <Text dimColor>({symbols.back}/{symbols.arrow} runs)</Text>}
@@ -871,7 +871,7 @@ function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav }: {
                     <Text dimColor>  actual:   {JSON.stringify(run.finalOutput)}</Text>
                 </Box>
             )}
-        </Box>
+        </Panel>
     );
 }
 
@@ -902,7 +902,7 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
                 <Text bold color={colors.focus}>{model}</Text>
                 <Badge text={allPass ? 'PASS' : 'FAIL'} color={allPass ? colors.success : colors.error} />
                 <Spacer />
-                <Text dimColor>{msStr(avgLatency)} avg  {symbols.dot}  ${totalCost.toFixed(4)}</Text>
+                <Text dimColor>{msStr(avgLatency)} avg  {symbols.dot}  {fmtCost(totalCost)}</Text>
             </Box>
             <Box gap={1} paddingLeft={spacing.sm} marginTop={1}>
                 <Box width={COL_SCENARIO}><Text dimColor>Scenario</Text></Box>
@@ -941,11 +941,10 @@ function ComparisonTable({ results }: { results: { model: string; metrics: Scena
     const COL = Math.max(20, maxModelLen + 2);
     const NAME_COL = 34;
     return (
-        <Box flexDirection="column" marginTop={1}>
-            <Text bold>Model Comparison</Text>
+        <Panel title="Model Comparison">
             <Box paddingLeft={spacing.sm} marginTop={1}>
                 <Box width={NAME_COL}><Text> </Text></Box>
-                {results.map(r => <Box key={r.model} width={COL}><Text bold>{r.model.slice(0, COL - 2)}</Text></Box>)}
+                {results.map(r => <Box key={r.model} width={COL}><Text bold>{truncate(r.model, COL - 2)}</Text></Box>)}
             </Box>
             <Box paddingLeft={spacing.sm}>
                 <Box width={NAME_COL}><Text> </Text></Box>
@@ -954,7 +953,7 @@ function ComparisonTable({ results }: { results: { model: string; metrics: Scena
             <Separator paddingLeft={spacing.sm} />
             {scenarioNames.map(name => (
                 <Box key={name} paddingLeft={spacing.sm}>
-                    <Box width={NAME_COL}><Text>{name.slice(0, 32)}</Text></Box>
+                    <Box width={NAME_COL}><Text>{truncate(name, 32)}</Text></Box>
                     {results.map(r => {
                         const m = r.metrics.find(x => x.scenarioName === name);
                         return m
@@ -977,10 +976,10 @@ function ComparisonTable({ results }: { results: { model: string; metrics: Scena
                 <Box width={NAME_COL}><Text dimColor>Cost</Text></Box>
                 {results.map(r => {
                     const total = r.metrics.reduce((s, m) => s + m.total_cost_usd, 0);
-                    return <Box key={r.model} width={COL}><Text dimColor>${total.toFixed(4)}</Text></Box>;
+                    return <Box key={r.model} width={COL}><Text dimColor>{fmtCost(total)}</Text></Box>;
                 })}
             </Box>
-        </Box>
+        </Panel>
     );
 }
 
@@ -1094,8 +1093,8 @@ function HistoryStep({ onOpen, onBack }: {
                         <Box key={e.filePath} gap={1}>
                             <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
                             <StatusIcon state={e.passed ? 'success' : 'error'} />
-                            <Box width={30}><Text color={focused ? colors.focus : undefined}>{e.agentName.slice(0, 29)}</Text></Box>
-                            <Box width={22}><Text dimColor={!focused}>{e.models.slice(0, 21)}</Text></Box>
+                            <Box width={30}><Text color={focused ? colors.focus : undefined}>{truncate(e.agentName, 29)}</Text></Box>
+                            <Box width={22}><Text dimColor={!focused}>{truncate(e.models, 21)}</Text></Box>
                             <Box width={10}><Text dimColor={!focused}>{e.scenarioCount}</Text></Box>
                             <Text dimColor={!focused}>{e.savedAt}</Text>
                         </Box>
@@ -1125,7 +1124,7 @@ function SummaryBlock({ results }: { results: { model: string; metrics: Scenario
         const allFail   = avgPath === 0 && avgTool === 0 && avgOut === 0;
         const lineColor = allPass ? colors.success : allFail ? colors.error : colors.warning;
         const icon      = allPass ? symbols.check : allFail ? symbols.cross : symbols.warning;
-        lines.push({ text: `${icon} ${r.model}  ${pctStr(avgPath)} path / ${pctStr(avgTool)} tool / ${pctStr(avgOut)} outcome · $${totalCost.toFixed(4)}  ${Math.round(avgLat)}ms avg`, color: lineColor });
+        lines.push({ text: `${icon} ${r.model}  ${pctStr(avgPath)} path / ${pctStr(avgTool)} tool / ${pctStr(avgOut)} outcome · ${fmtCost(totalCost)}  ${Math.round(avgLat)}ms avg`, color: lineColor });
         if (!allFail) {
             for (const m of r.metrics) {
                 if (m.path_accuracy < 1) {
@@ -1142,12 +1141,11 @@ function SummaryBlock({ results }: { results: { model: string; metrics: Scenario
         }
     }
     return (
-        <Box flexDirection="column" borderStyle={borders.secondary} borderColor={colors.focus} paddingX={1} marginTop={1}>
-            <Text dimColor>Summary</Text>
+        <Panel title="Summary" borderColor={colors.focus}>
             {lines.map((l, i) => (
                 <Text key={i} color={l.color}>{l.text}</Text>
             ))}
-        </Box>
+        </Panel>
     );
 }
 
@@ -1237,7 +1235,7 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
 
     return (
         <ScreenLayout title="Results"
-            helpItems={[{ key: '↑↓', action: 'scenario' }, { key: '←→', action: 'section' }, { key: 'Space', action: 'expand' }, { key: 's', action: 'save' }, { key: 'Esc', action: 'menu' }]}>
+            helpItems={[{ key: '↑↓', action: 'scenario' }, { key: '←→', action: 'section/runs' }, { key: 'Space', action: 'expand' }, { key: 's', action: 'save' }, { key: 'Esc', action: 'menu' }]}>
             {/* Header */}
             <Box gap={2}>
                 <Text bold>{spec.agent.name}</Text>
@@ -1344,9 +1342,9 @@ function ModelsListStep({ onShow, onBack }: {
             <Box key={m.id} gap={0}>
                 <Text color={focused ? colors.focus : undefined}>{focused ? `${symbols.cursor} ` : '  '}</Text>
                 <Text color={focused ? colors.focus : undefined} dimColor={m.deprecated}>
-                    {m.id.slice(0, COL_ID).padEnd(COL_ID)}
+                    {truncate(m.id, COL_ID).padEnd(COL_ID)}
                 </Text>
-                <Text dimColor={!focused}>{m.name.slice(0, COL_NAME).padEnd(COL_NAME)}</Text>
+                <Text dimColor={!focused}>{truncate(m.name, COL_NAME).padEnd(COL_NAME)}</Text>
                 <Text dimColor>{'$' + m.pricing.input_per_1m_tokens.toFixed(3).padStart(COL_IN - 1)}</Text>
                 <Text dimColor>{'$' + m.pricing.output_per_1m_tokens.toFixed(3).padStart(COL_OUT - 1)}</Text>
                 <Text dimColor>{ctx.padStart(COL_CTX)}</Text>
@@ -1498,7 +1496,7 @@ function ProviderTestStep({ providerName, onDone }: { providerName: string; onDo
 
     return (
         <ScreenLayout title="Test Connection"
-            helpItems={result ? [{ key: 'Enter / Esc', action: 'continue' }] : []}>
+            helpItems={result ? [{ key: 'Enter', action: 'continue' }, { key: 'Esc', action: 'continue' }] : []}>
             <Panel title={providerName} titleColor={colors.focus}
                    borderColor={result?.ok ? colors.success : result && !result.ok ? colors.error : colors.muted}>
                 {!result && <Text color={colors.warning}>{spinner} Sending test request…</Text>}
