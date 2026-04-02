@@ -7,6 +7,7 @@ export const colors = {
     warning:  'yellow',
     focus:    'cyan',
     tool:     'magenta',
+    muted:    'gray',
 } as const;
 
 export const spacing = {
@@ -37,6 +38,8 @@ export const symbols = {
 export const borders = {
     primary:   'round',
     secondary: 'single',
+    panel:     'round',
+    detail:    'single',
 } as const;
 
 export const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;

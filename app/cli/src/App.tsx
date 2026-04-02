@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, Spacer, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import fs from 'fs';
@@ -10,7 +10,8 @@ import { parse, saveResults, autoSaveToHistory, loadModelConfig, validateUserMod
 import type { AgentSpec, ScenarioMetrics, ProviderRef, Scenario, Flow, TraceEntry } from '@vrunai/types';
 import type { ModelConfig, Provider, ProviderKind } from '@vrunai/core';
 import { Logo } from './components/Logo.js';
-import { Bar, HelpBar, Pct, Separator, StatusIcon } from './components/primitives/index.js';
+import { Badge, Bar, Pct, Panel, Separator, StatusBar, StatusIcon, KeyValue, MenuSelect } from './components/primitives/index.js';
+import { ScreenLayout } from './components/layout/ScreenLayout.js';
 import { useSpinner } from './hooks/useSpinner.js';
 import { useElapsed, fmtElapsed } from './hooks/useElapsed.js';
 import { colors, symbols, spacing, borders, msStr, maskApiKey } from './theme.js';
@@ -80,23 +81,42 @@ function ScenarioRow({ name, progress, spinner }: { name: string; progress: Scen
 
 // ── Step: Menu ────────────────────────────────────────────────────────────────
 
-const MENU_ITEMS = [
-    { label: 'Evaluate',        value: 'evaluate' },
-    { label: 'LLM Providers',   value: 'providers' },
-    { label: 'Model Catalog',   value: 'models' },
-    { label: 'History',         value: 'history' },
-    { label: 'Try an Example',  value: 'example' },
-    { label: 'About',           value: 'about' },
-];
-
 function MenuStep({ onSelect }: { onSelect: (value: string) => void }) {
+    const config = loadConfig();
+    const providerCount = config.providers.length;
+    const providerNames = config.providers.slice(0, 3).map(p => p.name).join(', ');
+    const historyCount = scanHistoryEntries().length;
+    const lastRun = scanHistoryEntries()[0];
+
+    const menuItems = [
+        { label: 'Evaluate',        description: 'Run specs against LLM providers', value: 'evaluate' },
+        { label: 'LLM Providers',   description: `${providerCount} configured`,     value: 'providers' },
+        { label: 'Model Catalog',   description: 'Browse pricing & capabilities',   value: 'models' },
+        { label: 'History',         description: `${historyCount} past runs`,        value: 'history' },
+        { label: 'Try an Example',  description: 'Quick demo with built-in specs',  value: 'example' },
+        { label: 'About',           description: 'Version, links, license',         value: 'about' },
+    ];
+
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text dimColor>What would you like to do?</Text>
-            <SelectInput
-                items={MENU_ITEMS}
-                onSelect={item => onSelect(item.value)}
-            />
+        <Box flexDirection="column" paddingX={1}>
+            <Box paddingLeft={spacing.sm}>
+                <Text dimColor>Validate & Run AI Agents</Text>
+                <Spacer />
+                <Text dimColor>v{PKG_VERSION}</Text>
+            </Box>
+            <Panel>
+                <MenuSelect items={menuItems} onSelect={onSelect} />
+            </Panel>
+            {(providerCount > 0 || lastRun) && (
+                <Panel title="Quick Status" titleColor={colors.muted}>
+                    <Box>
+                        {providerCount > 0 && <Text dimColor>Providers: {providerNames}</Text>}
+                        <Spacer />
+                        {lastRun && <Text dimColor>Last run: {lastRun.savedAt}</Text>}
+                    </Box>
+                </Panel>
+            )}
+            <StatusBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'q', action: 'quit' }]} />
         </Box>
     );
 }
@@ -112,38 +132,59 @@ function ProvidersListStep({
     onAdd: () => void;
     onBack: () => void;
 }) {
-    useInput((_, key) => { if (key.escape) onBack(); });
     const providers = loadConfig().providers;
+    const [cursor, setCursor] = useState(0);
+    const totalItems = providers.length + 1; // providers + "Add"
 
-    const items = [
-        ...providers.map((p, i) => ({
-            label: `${p.name}  ${symbols.dot}  ${p.kind === 'custom' ? p.model : maskApiKey(p.apiKey)}  ${symbols.dot}  ${p.baseUrl}`,
-            value: String(i),
-            key: `provider-${i}`,
-        })),
-        { label: `${symbols.add} Add provider`, value: '__add__', key: '__add__' },
-        { label: `${symbols.back} Back`,         value: '__back__', key: '__back__' },
-    ];
+    useInput((_, key) => {
+        if (key.escape) onBack();
+        if (key.upArrow)   setCursor(i => Math.max(0, i - 1));
+        if (key.downArrow) setCursor(i => Math.min(totalItems - 1, i + 1));
+        if (key.return) {
+            if (cursor < providers.length) onSelect(providers[cursor].name, cursor);
+            else onAdd();
+        }
+    });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>LLM Providers</Text>
-            {providers.length === 0 && (
-                <Text dimColor>No providers saved yet.</Text>
-            )}
-            <SelectInput
-                items={items}
-                onSelect={item => {
-                    if (item.value === '__add__')   onAdd();
-                    else if (item.value === '__back__') onBack();
-                    else {
-                        const i = Number(item.value);
-                        onSelect(providers[i].name, i);
-                    }
-                }}
-            />
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+        <ScreenLayout title="LLM Providers"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'detail' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${providers.length} provider${providers.length !== 1 ? 's' : ''}`}>
+            <Panel>
+                {providers.length === 0 && (
+                    <Text dimColor>No providers saved yet.</Text>
+                )}
+                {providers.length > 0 && (
+                    <Box gap={1}>
+                        <Box width={3}><Text> </Text></Box>
+                        <Box width={20}><Text dimColor bold>Name</Text></Box>
+                        <Box width={12}><Text dimColor bold>Type</Text></Box>
+                        <Box width={10}><Text dimColor bold>Key</Text></Box>
+                    </Box>
+                )}
+                {providers.length > 0 && <Separator paddingLeft={spacing.sm} />}
+                {providers.map((p, i) => {
+                    const focused = i === cursor;
+                    return (
+                        <Box key={`p-${i}`} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <Box width={20}><Text color={focused ? colors.focus : undefined}>{p.name.slice(0, 19)}</Text></Box>
+                            <Box width={12}><Text dimColor={!focused}>{(p.kind === 'predefined' ? p.preset : 'custom').slice(0, 11)}</Text></Box>
+                            <Box width={10}><Text dimColor>{maskApiKey(p.apiKey)}</Text></Box>
+                        </Box>
+                    );
+                })}
+                {providers.length > 0 && <Text> </Text>}
+                <Box gap={1}>
+                    <Text color={cursor === providers.length ? colors.focus : undefined}>
+                        {cursor === providers.length ? symbols.cursor : ' '}
+                    </Text>
+                    <Text color={cursor === providers.length ? colors.focus : undefined}>
+                        {symbols.add} Add provider
+                    </Text>
+                </Box>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -152,46 +193,60 @@ function ProvidersListStep({
 function ProvidersDetailStep({
     providerIndex,
     onDelete,
+    onTest,
     onBack,
 }: {
     providerName: string;
     providerIndex: number;
     onDelete: () => void;
+    onTest: () => void;
     onBack: () => void;
 }) {
-    useInput((_, key) => { if (key.escape) onBack(); });
     const provider = loadConfig().providers[providerIndex];
+    const [cursor, setCursor] = useState(0);
+    const actions = ['test', 'delete'] as const;
+
+    useInput((_, key) => {
+        if (key.escape) onBack();
+        if (key.upArrow)   setCursor(i => Math.max(0, i - 1));
+        if (key.downArrow) setCursor(i => Math.min(actions.length - 1, i + 1));
+        if (key.return) {
+            if (actions[cursor] === 'test') onTest();
+            else onDelete();
+        }
+    });
 
     if (!provider) {
         return (
-            <Box paddingLeft={2} paddingTop={1}>
-                <Text color="red">Provider not found.</Text>
-            </Box>
+            <ScreenLayout title="Provider Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Text color={colors.error}>Provider not found.</Text>
+            </ScreenLayout>
         );
     }
 
-    const items = [
-        { label: `${symbols.cross} Delete`,  value: '__delete__' },
-        { label: `${symbols.back} Back`,   value: '__back__' },
-    ];
-
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>{provider.name}</Text>
-            <Box flexDirection="column" paddingLeft={1} gap={0}>
-                <Text dimColor>Model:    <Text color={colors.focus}>{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></Text>
-                <Text dimColor>Base URL: {provider.baseUrl}</Text>
-                <Text dimColor>API key:  {maskApiKey(provider.apiKey)}</Text>
-            </Box>
-            <SelectInput
-                items={items}
-                onSelect={item => {
-                    if (item.value === '__delete__') onDelete();
-                    else onBack();
-                }}
-            />
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+        <ScreenLayout title="Provider Detail"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel title={provider.name} titleColor={colors.focus}>
+                <KeyValue label="Provider:">{provider.kind === 'predefined' ? provider.preset : 'custom'}</KeyValue>
+                <KeyValue label="Model:"><Text color={colors.focus}>{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></KeyValue>
+                <KeyValue label="Base URL:">{provider.baseUrl}</KeyValue>
+                <KeyValue label="API key:">{maskApiKey(provider.apiKey)}</KeyValue>
+            </Panel>
+            <Panel title="Actions">
+                {actions.map((action, i) => {
+                    const focused = i === cursor;
+                    const label = action === 'test' ? 'Test Connection' : 'Delete';
+                    const c = action === 'delete' ? colors.error : undefined;
+                    return (
+                        <Box key={action} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <Text color={focused ? colors.focus : c}>{label}</Text>
+                        </Box>
+                    );
+                })}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -205,7 +260,6 @@ const PRESET_ITEMS = [
     { label: 'DeepSeek',  value: 'deepseek' },
     { label: 'Mistral',   value: 'mistral' },
     { label: 'Custom',    value: 'custom' },
-    { label: `${symbols.back} Back`,   value: '__back__' },
 ];
 
 function ProvidersPresetSelectStep({
@@ -217,18 +271,18 @@ function ProvidersPresetSelectStep({
 }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>Add Provider</Text>
-            <Text dimColor>Select a provider type:</Text>
-            <SelectInput
-                items={PRESET_ITEMS}
-                onSelect={item => {
-                    if (item.value === '__back__') onBack();
-                    else onSelect(item.value as 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'custom');
-                }}
-            />
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+        <ScreenLayout title="Add Provider"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                <Text dimColor>Select a provider type:</Text>
+                <SelectInput
+                    items={PRESET_ITEMS}
+                    onSelect={item => {
+                        onSelect(item.value as 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'custom');
+                    }}
+                />
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -283,39 +337,40 @@ function ProvidersFormStep({
     });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Add Provider  <Text dimColor>({PRESETS[preset].label})</Text></Text>
-            {!isCustom && (
-                <Text dimColor>Base URL: {PRESETS[preset].baseUrl}</Text>
-            )}
-            <Box flexDirection="column" gap={0} marginTop={1}>
-                {visibleFields.map((key, idx) => {
-                    const isActive = idx === activeField;
-                    return (
-                        <Box key={key} gap={1} paddingLeft={1}>
-                            <Box width={14}>
-                                <Text color={isActive ? 'cyan' : undefined} dimColor={!isActive}>
-                                    {FIELD_LABELS[key]}:
-                                </Text>
+        <ScreenLayout title={`Add Provider (${PRESETS[preset].label})`}
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'advance' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                {!isCustom && (
+                    <Text dimColor>Base URL: {PRESETS[preset].baseUrl}</Text>
+                )}
+                <Box flexDirection="column" gap={0} marginTop={isCustom ? 0 : 1}>
+                    {visibleFields.map((key, idx) => {
+                        const isActive = idx === activeField;
+                        return (
+                            <Box key={key} gap={1}>
+                                <Box width={14}>
+                                    <Text color={isActive ? colors.focus : undefined} dimColor={!isActive}>
+                                        {FIELD_LABELS[key]}:
+                                    </Text>
+                                </Box>
+                                {isActive ? (
+                                    <TextInput
+                                        value={fields[key]}
+                                        onChange={v => { onChange(key, v); setWarn(false); }}
+                                        onSubmit={handleSubmit}
+                                    />
+                                ) : (
+                                    <Text dimColor={!fields[key]}>
+                                        {fields[key] || '—'}
+                                    </Text>
+                                )}
                             </Box>
-                            {isActive ? (
-                                <TextInput
-                                    value={fields[key]}
-                                    onChange={v => { onChange(key, v); setWarn(false); }}
-                                    onSubmit={handleSubmit}
-                                />
-                            ) : (
-                                <Text dimColor={!fields[key]}>
-                                    {fields[key] || '—'}
-                                </Text>
-                            )}
-                        </Box>
-                    );
-                })}
-            </Box>
-            {warn && <Text color={colors.warning}>  This field is required</Text>}
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'advance' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+                        );
+                    })}
+                </Box>
+                {warn && <Text color={colors.warning}>This field is required</Text>}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -383,9 +438,7 @@ function MultiSelectList({
                     <Text color={colors.warning}>  Select at least one provider first</Text>
                 </Box>
             )}
-            <Box marginTop={warn ? 0 : 1}>
-                <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Space', action: 'toggle' }, { key: 'Enter', action: 'run' }, { key: 'Esc', action: 'back' }]} />
-            </Box>
+            {warn ? null : <Box marginTop={1} />}
         </Box>
     );
 }
@@ -452,31 +505,32 @@ function ProviderSelectStep({
     const hasSelectable = eligible.length > 0;
 
     if (!hasSelectable && unconfigured.length === 0) {
+        useInput((_, key) => { if (key.escape) onBack(); });
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-                <Text color={colors.warning}>No matching providers with API keys. Add one via LLM Providers.</Text>
-                <SelectInput
-                    items={[{ label: `${symbols.back} Back`, value: '__back__' }]}
-                    onSelect={() => onBack()}
-                />
-            </Box>
+            <ScreenLayout title="Select Providers" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel>
+                    <Text color={colors.warning}>No matching providers with API keys. Add one via LLM Providers.</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Select providers to evaluate</Text>
+        <ScreenLayout title="Select Providers"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Space', action: 'toggle' }, { key: 'Enter', action: 'run' }, { key: 'Esc', action: 'back' }]}>
             <Text dimColor>{spec.agent.name}</Text>
             {!hasSelectable && (
                 <Text color={colors.warning}>No providers configured. Add API keys via LLM Providers.</Text>
             )}
-            <MultiSelectList
-                items={items}
-                initialSelected={eligible.map(e => e.value)}
-                onConfirm={handleConfirm}
-                onBack={onBack}
-            />
-        </Box>
+            <Panel>
+                <MultiSelectList
+                    items={items}
+                    initialSelected={eligible.map(e => e.value)}
+                    onConfirm={handleConfirm}
+                    onBack={onBack}
+                />
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -535,39 +589,40 @@ function InputStep({
     });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
+        <ScreenLayout title="Evaluate"
+            helpItems={[{ key: 'Tab', action: 'cycle' }, { key: 'Enter', action: 'confirm' }, { key: 'Esc', action: 'back' }]}>
+            <Panel borderColor={error ? colors.error : colors.muted}>
+                <Box gap={1}>
+                    <Text dimColor>Path to spec file:</Text>
+                    <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+                </Box>
+                {error && <Text color={colors.error}>{symbols.cross} {error}</Text>}
+                {suggestions.length > 0 && (
+                    <Box flexDirection="column" paddingLeft={spacing.sm} marginTop={1}>
+                        {suggestions.map((s, i) => (
+                            <Box key={s} gap={1}>
+                                <Text color={i === selectedIdx ? colors.focus : undefined}>
+                                    {i === selectedIdx ? symbols.cursor : ' '}
+                                </Text>
+                                <Text color={i === selectedIdx ? colors.focus : undefined} dimColor={i !== selectedIdx}>
+                                    {s}
+                                </Text>
+                            </Box>
+                        ))}
+                    </Box>
+                )}
+            </Panel>
             {recentPaths.length > 0 && !value && (
-                <Box flexDirection="column">
-                    <Text dimColor>Recent:</Text>
+                <Panel title="Recent" titleColor={colors.muted}>
                     {recentPaths.slice(0, 3).map(p => (
-                        <Box key={p} gap={1} paddingLeft={spacing.sm}>
+                        <Box key={p} gap={1}>
                             <Text dimColor>{symbols.dot}</Text>
                             <Text dimColor>{p}</Text>
                         </Box>
                     ))}
-                </Box>
+                </Panel>
             )}
-            <Box gap={1}>
-                <Text dimColor>Path to spec file:</Text>
-                <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
-            </Box>
-            {error && <Text color={colors.error}>{symbols.cross} {error}</Text>}
-            {suggestions.length > 0 && (
-                <Box flexDirection="column" paddingLeft={spacing.md}>
-                    {suggestions.map((s, i) => (
-                        <Box key={s} gap={1}>
-                            <Text color={i === selectedIdx ? colors.focus : undefined}>
-                                {i === selectedIdx ? symbols.cursor : ' '}
-                            </Text>
-                            <Text color={i === selectedIdx ? colors.focus : undefined} dimColor={i !== selectedIdx}>
-                                {s}
-                            </Text>
-                        </Box>
-                    ))}
-                </Box>
-            )}
-            <HelpBar items={[{ key: 'Tab', action: 'cycle' }, { key: 'Enter', action: 'confirm' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -649,25 +704,42 @@ function RunningStep({
     const elapsed = useElapsed();
     const pctDone = totalRuns > 0 ? Math.round((doneTotal / totalRuns) * 100) : 0;
 
+    const eta = doneTotal >= 2 && doneTotal < totalRuns
+        ? `ETA: ~${fmtElapsed(Math.round(elapsed * (totalRuns / doneTotal) - elapsed))}`
+        : '';
+
     if (cancelled) {
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-                <Text color={colors.warning}>Cancelling… waiting for current run to finish</Text>
-                <HelpBar items={[{ key: 'Esc', action: 'back' }]} />
-            </Box>
+            <ScreenLayout title="Running" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel borderColor={colors.warning}>
+                    <Text color={colors.warning}>Cancelling… waiting for current run to finish</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
+        <ScreenLayout title="Running"
+            helpItems={[{ key: 'Esc', action: 'cancel' }]}
+            statusLeft={`Elapsed: ${fmtElapsed(elapsed)}`}>
             <Text dimColor>{spec.agent.name}  {symbols.dot}  {runsPerScenario} runs/scenario</Text>
 
+            {/* Overall progress panel */}
+            <Panel title="Overall" titleColor={colors.focus} borderColor={colors.focus}>
+                <Bar done={doneTotal} total={totalRuns} width={Math.max(20, (process.stdout.columns ?? 80) - 20)} />
+                <Box>
+                    <Text dimColor>{doneTotal}/{totalRuns} runs  ({pctDone}%)</Text>
+                    <Spacer />
+                    {eta && <Text dimColor>{eta}</Text>}
+                </Box>
+            </Panel>
+
+            {/* Per-provider panels */}
             {providers.map(provider => {
                 const model       = provider.getConfig().model;
                 const innerMap    = progress.get(model)!;
                 return (
-                    <Box key={model} flexDirection="column" marginTop={1}>
-                        <Text color={colors.focus}>{model}</Text>
+                    <Panel key={model} title={model} titleColor={colors.focus}>
                         {spec.scenarios.map(s => (
                             <ScenarioRow
                                 key={s.name}
@@ -676,18 +748,10 @@ function RunningStep({
                                 spinner={spinner}
                             />
                         ))}
-                    </Box>
+                    </Panel>
                 );
             })}
-
-            <Box gap={1}>
-                <Text dimColor>Progress: {doneTotal}/{totalRuns} runs ({pctDone}%)</Text>
-                <Text dimColor>{symbols.dot}</Text>
-                <Text dimColor>{fmtElapsed(elapsed)}</Text>
-                <Text dimColor>{symbols.dot}</Text>
-                <Text dimColor>Esc cancel</Text>
-            </Box>
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -794,10 +858,10 @@ function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav }: {
         : `run ${runIdx + 1}/${m.runs.length} ${symbols.dot} all passed`;
     const hasMultiple = m.runs.length > 1;
     return (
-        <Box flexDirection="column" paddingLeft={spacing.sm} marginTop={1} borderStyle={borders.secondary} borderColor={colors.focus} paddingX={1}>
+        <Box flexDirection="column" paddingLeft={spacing.sm} marginTop={1} borderStyle={borders.detail} borderColor={colors.focus} paddingX={1}>
             <Box gap={1}>
                 <Text dimColor>{runLabel}</Text>
-                {hasMultiple && <Text dimColor>({symbols.back}/{symbols.arrow} to switch runs)</Text>}
+                {hasMultiple && <Text dimColor>({symbols.back}/{symbols.arrow} runs)</Text>}
             </Box>
             <FlowGraph flow={flow} trace={run.trace} scenario={scenario} />
             {!run.outcomeMatch && (
@@ -833,10 +897,11 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
     const COL_SCENARIO = 34; // 2 (cursor) + 2 (icon+gap) + 30 (name)
 
     return (
-        <Box flexDirection="column" borderStyle={borders.primary} borderColor={allPass ? colors.success : colors.error} paddingX={1} marginBottom={1}>
+        <Panel borderColor={allPass ? colors.success : colors.error}>
             <Box gap={2}>
                 <Text bold color={colors.focus}>{model}</Text>
-                <Text color={allPass ? colors.success : colors.error}>{allPass ? symbols.check : symbols.cross} {allPass ? 'all passed' : 'has failures'}</Text>
+                <Badge text={allPass ? 'PASS' : 'FAIL'} color={allPass ? colors.success : colors.error} />
+                <Spacer />
                 <Text dimColor>{msStr(avgLatency)} avg  {symbols.dot}  ${totalCost.toFixed(4)}</Text>
             </Box>
             <Box gap={1} paddingLeft={spacing.sm} marginTop={1}>
@@ -864,7 +929,7 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
                 <Pct value={avgTool} />
                 <Pct value={avgOutcome} />
             </Box>
-        </Box>
+        </Panel>
     );
 }
 
@@ -928,6 +993,7 @@ type HistoryEntry = {
     scenarioCount: number;
     savedAt: string;
     sortKey: string;
+    passed: boolean;
 };
 
 function scanHistoryEntries(): HistoryEntry[] {
@@ -946,9 +1012,11 @@ function scanHistoryEntries(): HistoryEntry[] {
             const displayDate = `${ts.slice(0, 10)} ${ts.slice(11, 13)}:${ts.slice(14, 16)}`;
             const filePath = path.join(dir, file);
             try {
-                const raw: { model: string; metrics: { scenarioName: string }[] }[] =
+                const raw: { model: string; metrics: { scenarioName: string; path_accuracy?: number; tool_accuracy?: number; outcome_accuracy?: number }[] }[] =
                     JSON.parse(fs.readFileSync(filePath, 'utf8'));
                 const models = raw.map(r => r.model);
+                const passed = raw.every(r => r.metrics.every(m =>
+                    (m.path_accuracy ?? 0) === 1 && (m.tool_accuracy ?? 0) === 1 && (m.outcome_accuracy ?? 0) === 1));
                 entries.push({
                     filePath,
                     agentName,
@@ -956,6 +1024,7 @@ function scanHistoryEntries(): HistoryEntry[] {
                     scenarioCount: raw[0]?.metrics?.length ?? 0,
                     savedAt: displayDate,
                     sortKey: ts,
+                    passed,
                 });
             } catch { continue; }
         }
@@ -996,41 +1065,47 @@ function HistoryStep({ onOpen, onBack }: {
 
     if (entries.length === 0) {
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-                <Text bold>History</Text>
-                <Text dimColor>No runs saved yet. Complete an eval to populate history.</Text>
-                <HelpBar items={[{ key: 'Esc', action: 'back' }]} />
-            </Box>
+            <ScreenLayout title="History" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel>
+                    <Text dimColor>No runs saved yet. Complete an eval to populate history.</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" paddingLeft={spacing.sm} paddingTop={1} gap={0}>
-            <Text bold>History</Text>
-            <Box gap={1} marginTop={1}>
-                <Box width={2}><Text> </Text></Box>
-                <Box width={32}><Text dimColor>Name</Text></Box>
-                <Box width={22}><Text dimColor>Model</Text></Box>
-                <Box width={10}><Text dimColor>Scenarios</Text></Box>
-                <Text dimColor>Date</Text>
-            </Box>
-            {entries.map((e, i) => {
-                const focused = i === cursor;
-                return (
-                    <Box key={e.filePath} gap={1}>
-                        <Box width={2}><Text color={colors.focus}>{focused ? symbols.cursor : ' '}</Text></Box>
-                        <Box width={32}><Text color={focused ? colors.focus : undefined}>{e.agentName.slice(0, 31)}</Text></Box>
-                        <Box width={22}><Text dimColor={!focused}>{e.models.slice(0, 21)}</Text></Box>
-                        <Box width={10}><Text dimColor={!focused}>{e.scenarioCount}</Text></Box>
-                        <Text dimColor={!focused}>{e.savedAt}</Text>
-                    </Box>
-                );
-            })}
-            {pendingDelete && entries.length > 0
-                ? <Text color={colors.warning}>  Delete "{entries[cursor].agentName}"? y / any key to cancel</Text>
-                : <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'open' }, { key: 'd', action: 'delete' }, { key: 'Esc', action: 'back' }]} />
-            }
-        </Box>
+        <ScreenLayout title="History"
+            helpItems={pendingDelete
+                ? [{ key: 'y', action: 'confirm delete' }, { key: 'any key', action: 'cancel' }]
+                : [{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'open' }, { key: 'd', action: 'delete' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${entries.length} run${entries.length !== 1 ? 's' : ''}`}>
+            <Panel>
+                <Box gap={1}>
+                    <Box width={4}><Text> </Text></Box>
+                    <Box width={30}><Text dimColor bold>Name</Text></Box>
+                    <Box width={22}><Text dimColor bold>Model</Text></Box>
+                    <Box width={10}><Text dimColor bold>Scenarios</Text></Box>
+                    <Text dimColor bold>Date</Text>
+                </Box>
+                <Separator />
+                {entries.map((e, i) => {
+                    const focused = i === cursor;
+                    return (
+                        <Box key={e.filePath} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <StatusIcon state={e.passed ? 'success' : 'error'} />
+                            <Box width={30}><Text color={focused ? colors.focus : undefined}>{e.agentName.slice(0, 29)}</Text></Box>
+                            <Box width={22}><Text dimColor={!focused}>{e.models.slice(0, 21)}</Text></Box>
+                            <Box width={10}><Text dimColor={!focused}>{e.scenarioCount}</Text></Box>
+                            <Text dimColor={!focused}>{e.savedAt}</Text>
+                        </Box>
+                    );
+                })}
+            </Panel>
+            {pendingDelete && entries.length > 0 && (
+                <Text color={colors.warning}>  Delete "{entries[cursor].agentName}"?</Text>
+            )}
+        </ScreenLayout>
     );
 }
 
@@ -1161,27 +1236,28 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
     const section = sections[sectionIdx];
 
     return (
-        <Box flexDirection="column" paddingTop={1} gap={1}>
+        <ScreenLayout title="Results"
+            helpItems={[{ key: '↑↓', action: 'scenario' }, { key: '←→', action: 'section' }, { key: 'Space', action: 'expand' }, { key: 's', action: 'save' }, { key: 'Esc', action: 'menu' }]}>
             {/* Header */}
             <Box gap={2}>
                 <Text bold>{spec.agent.name}</Text>
-                {isDemoMode && <Text color={colors.warning}>[demo mode]</Text>}
-                {savedAt && <Text dimColor>[saved · {savedAt}]</Text>}
+                {isDemoMode && <Badge text="demo mode" color={colors.warning} />}
+                {savedAt && <Badge text={`saved ${symbols.dot} ${savedAt}`} color={colors.muted} />}
             </Box>
 
-            {/* Section indicator */}
-            <Box gap={1} paddingLeft={spacing.sm}>
-                {sections.map((s, i) => {
-                    const label = s.type === 'model' ? results[s.mi].model
-                        : s.type === 'comparison' ? 'Comparison'
-                        : 'Summary';
-                    return (
-                        <Text key={i} color={i === sectionIdx ? colors.focus : undefined} dimColor={i !== sectionIdx}>
-                            {i === sectionIdx ? `[${label}]` : ` ${label} `}
-                        </Text>
-                    );
-                })}
-            </Box>
+            {/* Section tabs in panel */}
+            <Panel>
+                <Box gap={1}>
+                    {sections.map((s, i) => {
+                        const label = s.type === 'model' ? results[s.mi].model
+                            : s.type === 'comparison' ? 'Comparison'
+                            : 'Summary';
+                        return i === sectionIdx
+                            ? <Text key={i} inverse color={colors.focus}> {label} </Text>
+                            : <Text key={i} dimColor> {label} </Text>;
+                    })}
+                </Box>
+            </Panel>
 
             {/* Active section content */}
             {section.type === 'model' && (() => {
@@ -1209,8 +1285,7 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
             {section.type === 'summary' && <SummaryBlock results={results} />}
 
             {savedPath && <Text color={colors.success}>  {symbols.check} saved {symbols.arrow} {savedPath}</Text>}
-            <HelpBar items={[{ key: '↑↓', action: 'scenario' }, { key: '←→', action: 'section' }, { key: 'Space', action: 'expand/collapse' }, { key: 's', action: 'save' }, { key: 'Esc', action: 'menu' }]} />
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -1284,33 +1359,36 @@ function ModelsListStep({ onShow, onBack }: {
     const showScrollDown = viewportStart + maxVisible < orderedModels.length;
 
     return (
-        <Box flexDirection="column" paddingLeft={2} paddingTop={1} gap={1}>
-            <Text bold>Models</Text>
-            <Box gap={0}>
-                <Text dimColor>{''.padEnd(2)}</Text>
-                <Text dimColor bold>{'ID'.padEnd(COL_ID)}</Text>
-                <Text dimColor bold>{'Name'.padEnd(COL_NAME)}</Text>
-                <Text dimColor bold>{'Input/1M'.padStart(COL_IN)}</Text>
-                <Text dimColor bold>{'Output/1M'.padStart(COL_OUT)}</Text>
-                <Text dimColor bold>{'Context'.padStart(COL_CTX)}</Text>
-            </Box>
-            {showScrollUp && <Text dimColor>  ↑ {viewportStart} more above</Text>}
-            {visibleModels.map((m, vi) => {
-                const i = viewportStart + vi;
-                const sepBefore = i === activeModels.length && deprecatedModels.length > 0;
-                return (
-                    <Box key={m.id} flexDirection="column" gap={0}>
-                        {sepBefore && <Text dimColor>{'  ' + symbols.separator.repeat(2) + ' deprecated ' + symbols.separator.repeat(Math.max(0, COL_ID + COL_NAME + COL_IN + COL_OUT + COL_CTX - 14))}</Text>}
-                        <ModelRow m={m} i={i} />
-                    </Box>
-                );
-            })}
-            {showScrollDown && <Text dimColor>  ↓ {orderedModels.length - viewportStart - maxVisible} more below</Text>}
+        <ScreenLayout title="Models"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'detail' }, { key: 'v', action: 'validate config' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${orderedModels.length} models`}>
+            <Panel>
+                <Box gap={0}>
+                    <Text dimColor>{''.padEnd(2)}</Text>
+                    <Text dimColor bold>{'ID'.padEnd(COL_ID)}</Text>
+                    <Text dimColor bold>{'Name'.padEnd(COL_NAME)}</Text>
+                    <Text dimColor bold>{'Input/1M'.padStart(COL_IN)}</Text>
+                    <Text dimColor bold>{'Output/1M'.padStart(COL_OUT)}</Text>
+                    <Text dimColor bold>{'Context'.padStart(COL_CTX)}</Text>
+                </Box>
+                <Separator />
+                {showScrollUp && <Text dimColor>  ↑ {viewportStart} more above</Text>}
+                {visibleModels.map((m, vi) => {
+                    const i = viewportStart + vi;
+                    const sepBefore = i === activeModels.length && deprecatedModels.length > 0;
+                    return (
+                        <Box key={m.id} flexDirection="column" gap={0}>
+                            {sepBefore && <Text dimColor>{'  ' + symbols.separator.repeat(2) + ' deprecated ' + symbols.separator.repeat(Math.max(0, COL_ID + COL_NAME + COL_IN + COL_OUT + COL_CTX - 14))}</Text>}
+                            <ModelRow m={m} i={i} />
+                        </Box>
+                    );
+                })}
+                {showScrollDown && <Text dimColor>  ↓ {orderedModels.length - viewportStart - maxVisible} more below</Text>}
+            </Panel>
             {validateMsg && (
                 <Text color={validateMsg.startsWith(symbols.check) ? colors.success : colors.warning}>{validateMsg}</Text>
             )}
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'show detail' }, { key: 'v', action: 'validate user config' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -1323,9 +1401,9 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
 
     if (!model) {
         return (
-            <Box paddingLeft={spacing.sm} paddingTop={1}>
+            <ScreenLayout title="Model Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
                 <Text color={colors.error}>Model not found: {modelId}</Text>
-            </Box>
+            </ScreenLayout>
         );
     }
 
@@ -1333,35 +1411,19 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
     const ctx = model.context_window >= 1_000_000
         ? (model.context_window / 1_000_000).toFixed(0) + 'M tokens'
         : (model.context_window / 1_000).toFixed(0) + 'k tokens';
+    const titleSuffix = model.deprecated ? ` [deprecated]` : '';
 
     return (
-        <Box flexDirection="column" paddingLeft={spacing.sm} paddingTop={1} gap={1}>
-            <Box gap={1}>
-                <Text bold>{model.id}</Text>
-                <Text dimColor>—</Text>
-                <Text>{model.name}</Text>
-                {model.deprecated && <Text color={colors.warning}>[deprecated]</Text>}
-            </Box>
-            <Box flexDirection="column" gap={0} paddingLeft={spacing.sm}>
-                <Box gap={1}><Text dimColor>{'Provider:'.padEnd(16)}</Text><Text>{model.provider}</Text></Box>
-                <Box gap={1}><Text dimColor>{'Context:'.padEnd(16)}</Text><Text>{ctx}</Text></Box>
-                <Box gap={1}><Text dimColor>{'Tools:'.padEnd(16)}</Text>{check(model.supports_tools)}</Box>
-                <Box gap={1}><Text dimColor>{'Vision:'.padEnd(16)}</Text>{check(model.supports_vision)}</Box>
-                <Box gap={1}>
-                    <Text dimColor>{'Input pricing:'.padEnd(16)}</Text>
-                    <Text>${model.pricing.input_per_1m_tokens.toFixed(3)} / 1M tokens</Text>
-                </Box>
-                <Box gap={1}>
-                    <Text dimColor>{'Output pricing:'.padEnd(16)}</Text>
-                    <Text>${model.pricing.output_per_1m_tokens.toFixed(3)} / 1M tokens</Text>
-                </Box>
-            </Box>
-            <SelectInput
-                items={[{ label: `${symbols.back} Back`, value: '__back__' }]}
-                onSelect={onBack}
-            />
-            <HelpBar items={[{ key: 'Enter / Esc', action: 'back' }]} />
-        </Box>
+        <ScreenLayout title="Model Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
+            <Panel title={`${model.id} — ${model.name}${titleSuffix}`} titleColor={colors.focus}>
+                <KeyValue label="Provider:">{model.provider}</KeyValue>
+                <KeyValue label="Context:">{ctx}</KeyValue>
+                <KeyValue label="Tools:">{check(model.supports_tools)}</KeyValue>
+                <KeyValue label="Vision:">{check(model.supports_vision)}</KeyValue>
+                <KeyValue label="Input pricing:">${model.pricing.input_per_1m_tokens.toFixed(3)} / 1M tokens</KeyValue>
+                <KeyValue label="Output pricing:">${model.pricing.output_per_1m_tokens.toFixed(3)} / 1M tokens</KeyValue>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1370,28 +1432,14 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
 function AboutStep({ onBack }: { onBack: () => void }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>About vrunai</Text>
-            <Box flexDirection="column" gap={0}>
-                <Box gap={2}>
-                    <Text dimColor>Version   </Text>
-                    <Text>{PKG_VERSION}</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>Website   </Text>
-                    <Text color={colors.focus}>https://vrunai.com</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>Repository</Text>
-                    <Text color={colors.focus}>https://github.com/vrunai/vrunai</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>License   </Text>
-                    <Text>AGPL-3.0</Text>
-                </Box>
-            </Box>
-            <HelpBar items={[{ key: 'Esc', action: 'back' }]} />
-        </Box>
+        <ScreenLayout title="About" helpItems={[{ key: 'Esc', action: 'back' }]}>
+            <Panel title="vrunai" titleColor={colors.focus}>
+                <KeyValue label="Version:">{PKG_VERSION}</KeyValue>
+                <KeyValue label="Website:"><Text color={colors.focus}>https://vrunai.com</Text></KeyValue>
+                <KeyValue label="Repository:"><Text color={colors.focus}>https://github.com/vrunai/vrunai</Text></KeyValue>
+                <KeyValue label="License:">AGPL-3.0</KeyValue>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1403,30 +1451,27 @@ function ExampleSelectStep({ onSelect, onBack }: {
 }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>Try an Example</Text>
-            <Text dimColor>Select an example agent spec:</Text>
-            <SelectInput
-                items={[
-                    ...EXAMPLES.map((e, i) => ({
+        <ScreenLayout title="Try an Example"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                <Text dimColor>Select an example agent spec:</Text>
+                <SelectInput
+                    items={EXAMPLES.map((e, i) => ({
                         label: `${e.label}  (${e.scenarios} scenarios, ${e.tools} tools)`,
                         value: String(i),
-                    })),
-                    { label: `${symbols.back} Back`, value: '__back__' },
-                ]}
-                onSelect={item => {
-                    if (item.value === '__back__') { onBack(); return; }
-                    try {
-                        const ex = EXAMPLES[Number(item.value)];
-                        const spec = parseYamlText(ex.yaml);
-                        onSelect(spec, ex.label);
-                    } catch {
-                        onBack();
-                    }
-                }}
-            />
-            <HelpBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]} />
-        </Box>
+                    }))}
+                    onSelect={item => {
+                        try {
+                            const ex = EXAMPLES[Number(item.value)];
+                            const spec = parseYamlText(ex.yaml);
+                            onSelect(spec, ex.label);
+                        } catch {
+                            onBack();
+                        }
+                    }}
+                />
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1452,18 +1497,20 @@ function ProviderTestStep({ providerName, onDone }: { providerName: string; onDo
     }, []);
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={spacing.sm} paddingTop={1}>
-            <Text bold>Testing connection: {providerName}</Text>
-            {!result && <Text color={colors.warning}>{spinner} Sending test request…</Text>}
-            {result?.ok && <Text color={colors.success}>{symbols.check} Connection successful</Text>}
-            {result && !result.ok && (
-                <Box flexDirection="column">
-                    <Text color={colors.error}>{symbols.cross} Connection failed</Text>
-                    <Text dimColor>  {result.error}</Text>
-                </Box>
-            )}
-            {result && <HelpBar items={[{ key: 'Enter / Esc', action: 'continue' }]} />}
-        </Box>
+        <ScreenLayout title="Test Connection"
+            helpItems={result ? [{ key: 'Enter / Esc', action: 'continue' }] : []}>
+            <Panel title={providerName} titleColor={colors.focus}
+                   borderColor={result?.ok ? colors.success : result && !result.ok ? colors.error : colors.muted}>
+                {!result && <Text color={colors.warning}>{spinner} Sending test request…</Text>}
+                {result?.ok && <Text color={colors.success}>{symbols.check} Connection successful</Text>}
+                {result && !result.ok && (
+                    <Box flexDirection="column">
+                        <Text color={colors.error}>{symbols.cross} Connection failed</Text>
+                        <Text dimColor>  {result.error}</Text>
+                    </Box>
+                )}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1563,35 +1610,9 @@ export function App() {
         }
     }
 
-    // Screen title for breadcrumb header (shown on non-menu screens)
-    const SCREEN_TITLES: Partial<Record<Step['kind'], string>> = {
-        'providers-list': 'LLM Providers',
-        'providers-detail': 'Provider Detail',
-        'providers-preset-select': 'Add Provider',
-        'providers-form': 'Add Provider',
-        'providers-test': 'Test Connection',
-        'input': 'Evaluate',
-        'provider-select': 'Select Providers',
-        'running': 'Running',
-        'results': 'Results',
-        'example-select': 'Examples',
-        'models-list': 'Models',
-        'models-detail': 'Model Detail',
-        'history': 'History',
-        'about': 'About',
-    };
-
     return (
-        <Box flexDirection="column" paddingX={2}>
-            {step.kind === 'menu' ? (
-                <Logo />
-            ) : (
-                <Box paddingTop={1} paddingLeft={spacing.sm} gap={1}>
-                    <Text dimColor>VRUNAI</Text>
-                    <Text dimColor>{symbols.arrow}</Text>
-                    <Text bold>{SCREEN_TITLES[step.kind] ?? ''}</Text>
-                </Box>
-            )}
+        <Box flexDirection="column" paddingX={1}>
+            {step.kind === 'menu' && <Logo />}
 
             {step.kind === 'menu' && (
                 <MenuStep onSelect={handleMenuSelect} />
@@ -1628,6 +1649,7 @@ export function App() {
                         deleteProvider(step.providerIndex);
                         setStep({ kind: 'providers-list' });
                     }}
+                    onTest={() => setStep({ kind: 'providers-test', providerName: step.providerName })}
                     onBack={() => setStep({ kind: 'providers-list' })}
                 />
             )}

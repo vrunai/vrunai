@@ -1,7 +1,14 @@
+export { Badge } from './Badge.js';
 export { Bar } from './Bar.js';
 export { HelpBar } from './HelpBar.js';
 export type { HelpItem } from './HelpBar.js';
+export { KeyValue } from './KeyValue.js';
+export { MenuSelect } from './MenuSelect.js';
+export type { MenuItem } from './MenuSelect.js';
+export { Panel } from './Panel.js';
 export { Pct } from './Pct.js';
 export { Separator } from './Separator.js';
+export { StatusBar } from './StatusBar.js';
+export type { StatusBarItem } from './StatusBar.js';
 export { StatusIcon } from './StatusIcon.js';
 export type { StatusState } from './StatusIcon.js';
