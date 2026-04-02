@@ -55,3 +55,10 @@ export function addRecentPath(path: string): void {
     config.recentPaths = [...current, ...deduped.filter(r => r.cwd !== cwd)];
     saveConfig(config);
 }
+
+/** Returns recent spec file paths for the current working directory. */
+export function getRecentPaths(): string[] {
+    const config = loadConfig();
+    const cwd = process.cwd();
+    return (config.recentPaths ?? []).filter(r => r.cwd === cwd).map(r => r.path);
+}
