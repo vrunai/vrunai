@@ -4,56 +4,151 @@
 
 /* Dark theme (default) */
 :root {
-  --bg-base:      #0a0a0b;
-  --bg-surface:   #111113;
-  --bg-elevated:  #18181b;
-  --bg-muted:     #1e1e23;
-  --bg-subtle:    #26262d;
-  --border:       #2a2a32;
-  --border-focus: #4a4a5a;
-  --text-primary: #f0f0f3;
-  --text-secondary: #8b8b9a;
-  --text-muted:   #52525f;
-  --accent:       #ffffff;
-  --green:        #22c55e;
-  --yellow:       #f59e0b;
-  --red:          #ef4444;
+  /* Brand */
+  --brand-primary: #8B5CF6;
+  --brand-hover: #7C3AED;
+  --brand-light: #A78BFA;
+  --brand-muted: rgba(139, 92, 246, 0.12);
+  --brand-gradient: linear-gradient(90deg, #3B82F6, #8B5CF6, #D946EF);
+  --brand-gradient-subtle: linear-gradient(90deg, #3B82F6, #8B5CF6);
+  --brand-blue: #3B82F6;
+  --brand-magenta: #D946EF;
+
+  /* Backgrounds */
+  --bg-base:      #0F172A;
+  --bg-surface:   #1E293B;
+  --bg-elevated:  #334155;
+  --bg-muted:     #162032;
+  --bg-subtle:    #293548;
+  --bg-inset:     #0B1120;
+
+  /* Borders */
+  --border:       rgba(139, 92, 246, 0.18);
+  --border-default: rgba(139, 92, 246, 0.22);
+  --border-focus: rgba(139, 92, 246, 0.35);
+  --border-neutral: rgba(255, 255, 255, 0.06);
+
+  /* Text */
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted:   #64748B;
+  --text-soft:    #94A3B8;
+  --text-faint:   #475569;
+
+  /* Accent (maps to brand primary) */
+  --accent:       #8B5CF6;
+  --accent-hover: #7C3AED;
+  --accent-light: #A78BFA;
+
+  /* Semantic */
+  --green:        #22C55E;
+  --yellow:       #F59E0B;
+  --red:          #EF4444;
   --green-accent: #10b981;
   --green-light:  #6ee7b7;
-  --overlay-active: rgba(255,255,255,0.08);
-  --overlay-hover:  rgba(255,255,255,0.04);
-  --accent-hover:   #e0e0e0;
-  --code-cyan:      #67e8f9;
-  --code-purple:    #c084fc;
-  --text-soft:      #c0c0c8;
-  --red-light:      #f87171;
+  --red-light:    #f87171;
+  --color-success-bg: rgba(34, 197, 94, 0.1);
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-info: #3B82F6;
+  --color-info-bg: rgba(59, 130, 246, 0.1);
+
+  /* Interactive */
+  --btn-primary-bg: linear-gradient(90deg, #3B82F6, #8B5CF6);
+  --btn-primary-bg-hover: linear-gradient(90deg, #2563EB, #7C3AED);
+  --btn-secondary-border: #8B5CF6;
+  --btn-secondary-text: #A78BFA;
+  --btn-secondary-hover-bg: rgba(139, 92, 246, 0.08);
+  --input-border: rgba(139, 92, 246, 0.15);
+  --input-focus: #8B5CF6;
+  --link-color: #A78BFA;
+  --link-hover: #C4B5FD;
+  --tab-active: #8B5CF6;
+
+  /* Overlays */
+  --overlay-active: rgba(139, 92, 246, 0.12);
+  --overlay-hover:  rgba(139, 92, 246, 0.08);
+
+  /* Syntax */
+  --code-bg:      #0B1120;
+  --code-cyan:    #34D399;
+  --code-purple:  #A78BFA;
+  --code-keyword: #A78BFA;
+  --code-text:    #F8FAFC;
+  --code-flag:    #475569;
+  --code-string:  #34D399;
+  --code-number:  #F59E0B;
+  --code-comment: #475569;
 }
 
 /* Light theme */
 :root.light {
+  --brand-primary: #7C3AED;
+  --brand-hover: #6D28D9;
+  --brand-light: #8B5CF6;
+  --brand-muted: rgba(124, 58, 237, 0.10);
+  --brand-gradient: linear-gradient(90deg, #2563EB, #7C3AED, #C026D3);
+  --brand-gradient-subtle: linear-gradient(90deg, #2563EB, #7C3AED);
+  --brand-blue: #2563EB;
+  --brand-magenta: #C026D3;
+
   --bg-base:      #f8f8fa;
   --bg-surface:   #ffffff;
   --bg-elevated:  #f0f0f3;
-  --bg-muted:     #e8e8ed;
-  --bg-subtle:    #d8d8e0;
-  --border:       #d0d0d8;
-  --border-focus: #a0a0b0;
+  --bg-muted:     #f0f0f3;
+  --bg-subtle:    #e8e8ed;
+  --bg-inset:     #f0f0f3;
+
+  --border:       rgba(124, 58, 237, 0.16);
+  --border-default: rgba(124, 58, 237, 0.22);
+  --border-focus: rgba(124, 58, 237, 0.35);
+  --border-neutral: rgba(0, 0, 0, 0.06);
+
   --text-primary: #111113;
   --text-secondary: #555566;
   --text-muted:   #888899;
-  --accent:       #111113;
+  --text-soft:    #444455;
+  --text-faint:   #999;
+
+  --accent:       #7C3AED;
+  --accent-hover: #6D28D9;
+  --accent-light: #8B5CF6;
+
   --green:        #16a34a;
   --yellow:       #d97706;
   --red:          #dc2626;
   --green-accent: #059669;
   --green-light:  #065f46;
-  --overlay-active: rgba(0,0,0,0.06);
-  --overlay-hover:  rgba(0,0,0,0.03);
-  --accent-hover:   #d0d0d8;
-  --code-cyan:      #0891b2;
-  --code-purple:    #7c3aed;
-  --text-soft:      #444455;
-  --red-light:      #dc2626;
+  --red-light:    #dc2626;
+  --color-success-bg: rgba(22, 163, 74, 0.08);
+  --color-warning-bg: rgba(217, 119, 6, 0.08);
+  --color-error-bg: rgba(220, 38, 38, 0.08);
+  --color-info: #2563EB;
+  --color-info-bg: rgba(37, 99, 235, 0.08);
+
+  --btn-primary-bg: linear-gradient(90deg, #2563EB, #7C3AED);
+  --btn-primary-bg-hover: linear-gradient(90deg, #1D4ED8, #6D28D9);
+  --btn-secondary-border: #7C3AED;
+  --btn-secondary-text: #8B5CF6;
+  --btn-secondary-hover-bg: rgba(124, 58, 237, 0.06);
+  --input-border: rgba(124, 58, 237, 0.18);
+  --input-focus: #7C3AED;
+  --link-color: #7C3AED;
+  --link-hover: #8B5CF6;
+  --tab-active: #7C3AED;
+
+  --overlay-active: rgba(124, 58, 237, 0.08);
+  --overlay-hover:  rgba(124, 58, 237, 0.04);
+
+  --code-bg:      #f0f0f3;
+  --code-cyan:    #059669;
+  --code-purple:  #7c3aed;
+  --code-keyword: #7c3aed;
+  --code-text:    #111113;
+  --code-flag:    #888899;
+  --code-string:  #059669;
+  --code-number:  #d97706;
+  --code-comment: #888899;
 }
 
 * {
@@ -77,11 +172,11 @@ html, body, #root {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--bg-subtle);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-focus);
+  background: var(--bg-elevated);
 }
 
 /* Focus styles */
@@ -100,7 +195,7 @@ html, body, #root {
 select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%23888899' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 2rem !important;

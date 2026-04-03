@@ -20,13 +20,13 @@ const KIND_OPTIONS: { value: ProviderKind; label: string; baseUrl: string }[] = 
 ]
 
 const KIND_COLORS: Record<ProviderKind, string> = {
-  openai:    '#22c55e',
-  anthropic: '#f59e0b',
-  google:    '#3b82f6',
-  xai:       '#888888',
-  deepseek:  '#0066ff',
-  mistral:   '#ff6b35',
-  custom:    '#8b8b9a',
+  openai:    '#10B981',
+  anthropic: '#8B5CF6',
+  google:    '#3B82F6',
+  xai:       '#64748B',
+  deepseek:  '#06B6D4',
+  mistral:   '#F59E0B',
+  custom:    '#64748B',
 }
 
 function maskKey(key: string): string {
@@ -120,8 +120,8 @@ function ProviderForm({ initial, onSave, onCancel }: {
   }
 
   const inputStyle = {
-    background: 'var(--bg-muted)',
-    border: '1px solid var(--border)',
+    background: 'var(--input-bg, var(--bg-surface))',
+    border: '1px solid var(--input-border)',
     color: 'var(--text-primary)',
     borderRadius: '0.5rem',
     padding: '0.5rem 0.75rem',
@@ -238,7 +238,7 @@ function ProviderForm({ initial, onSave, onCancel }: {
             onClick={handleSave}
             disabled={(kind !== 'custom' && !apiKey.trim()) || testing}
             className="px-4 py-1.5 text-sm rounded-lg font-medium transition-colors"
-            style={{ background: 'var(--accent)', color: 'var(--bg-base)', opacity: ((kind !== 'custom' && !apiKey.trim()) || testing) ? 0.5 : 1 }}
+            style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF', opacity: ((kind !== 'custom' && !apiKey.trim()) || testing) ? 0.5 : 1 }}
           >
             {testing ? 'Saving…' : 'Save'}
           </button>
@@ -266,13 +266,13 @@ function ProviderCard({ provider, onEdit, onDelete }: {
         </div>
         <div className="flex items-center gap-3">
           {provider.connected === true && (
-            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: '#22c55e22', color: 'var(--green)' }}>
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--color-success-bg)', color: 'var(--green)' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--green)' }} />
               Connected
             </span>
           )}
           {provider.connected === false && (
-            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: '#ef444422', color: 'var(--red)' }}>
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--color-error-bg)', color: 'var(--red)' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--red)' }} />
               Connection failed
             </span>
@@ -349,9 +349,9 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
             <button
               onClick={() => setAdding(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{ background: 'var(--accent)', color: 'var(--bg-base)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-hover)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)' }}
+              style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg-hover)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg)' }}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -367,8 +367,8 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
         {/* Privacy notice */}
         <div className="flex items-center gap-2.5 rounded-lg px-3.5 py-2.5 mb-5" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-            <path d="M8 1L2 4v4c0 3.3 2.5 6.4 6 7 3.5-.6 6-3.7 6-7V4L8 1z" stroke="#22c55e" strokeWidth="1.2" strokeLinejoin="round"/>
-            <path d="M5.5 8l1.5 1.5L10.5 6" stroke="#22c55e" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 1L2 4v4c0 3.3 2.5 6.4 6 7 3.5-.6 6-3.7 6-7V4L8 1z" stroke="var(--green)" strokeWidth="1.2" strokeLinejoin="round"/>
+            <path d="M5.5 8l1.5 1.5L10.5 6" stroke="var(--green)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             API keys are stored in your browser only - never sent to any server other than the provider APIs.
@@ -385,7 +385,7 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--bg-muted)' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M21 12a9 9 0 1 1-9-9M21 3l-9 9" stroke="#52525f" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M21 12a9 9 0 1 1-9-9M21 3l-9 9" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No providers yet</p>
@@ -393,7 +393,7 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
             <button
               onClick={() => setAdding(true)}
               className="px-4 py-2 text-sm rounded-lg font-medium"
-              style={{ background: 'var(--accent)', color: 'var(--bg-base)' }}
+              style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF' }}
             >
               Add Provider
             </button>

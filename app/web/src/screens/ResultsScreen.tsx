@@ -362,9 +362,9 @@ export function ResultsScreen({ spec, results, isDemoMode, onNewRun }: Props) {
             <button
               onClick={onNewRun}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors font-medium"
-              style={{ background: 'var(--accent)', color: 'var(--bg-base)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-hover)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)' }}
+              style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg-hover)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg)' }}
             >
               New Run
             </button>

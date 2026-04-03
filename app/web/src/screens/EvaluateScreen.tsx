@@ -11,12 +11,12 @@ import markLightSrc from '../assets/mark-light.svg'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const PROVIDER_COLORS: Record<string, string> = {
-  openai:    '#10a37f',
-  anthropic: '#d4742a',
-  google:    '#4285f4',
-  xai:       '#888',
-  deepseek:  '#0066ff',
-  mistral:   '#ff6b35',
+  openai:    '#10B981',
+  anthropic: '#8B5CF6',
+  google:    '#3B82F6',
+  xai:       '#64748B',
+  deepseek:  '#06B6D4',
+  mistral:   '#F59E0B',
   custom:    'var(--accent)',
 }
 
@@ -24,7 +24,7 @@ function ProviderDot({ kind }: { kind: string }) {
   return (
     <span
       className="inline-block rounded-full flex-shrink-0"
-      style={{ width: 8, height: 8, background: PROVIDER_COLORS[kind] ?? '#888' }}
+      style={{ width: 8, height: 8, background: PROVIDER_COLORS[kind] ?? 'var(--text-muted)' }}
     />
   )
 }
@@ -76,7 +76,7 @@ function DropZone({ onLoad }: { onLoad: (spec: AgentSpec, yaml: string) => void 
         style={{
           maxWidth: 520,
           border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-          background: dragging ? 'rgba(255,255,255,0.03)' : 'var(--bg-surface)',
+          background: dragging ? 'var(--brand-muted)' : 'var(--bg-surface)',
         }}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
@@ -106,7 +106,7 @@ function DropZone({ onLoad }: { onLoad: (spec: AgentSpec, yaml: string) => void 
       </div>
 
       {error && (
-        <div className="w-full max-w-xl rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' }}>
+        <div className="w-full max-w-xl rounded-lg px-4 py-3 text-sm" style={{ background: 'var(--color-error-bg)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' }}>
           <strong>Parse error:</strong> {error}
         </div>
       )}
@@ -614,8 +614,8 @@ export function EvaluateScreen({ spec, providers, onLoad, onRun, onDemoRun, onGo
 
         <div className="flex items-center gap-2.5 rounded-lg px-3.5 py-2.5" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginTop: -4, maxWidth: 520 }}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-            <path d="M8 1L2 4v4c0 3.3 2.5 6.4 6 7 3.5-.6 6-3.7 6-7V4L8 1z" stroke="#22c55e" strokeWidth="1.2" strokeLinejoin="round"/>
-            <path d="M5.5 8l1.5 1.5L10.5 6" stroke="#22c55e" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 1L2 4v4c0 3.3 2.5 6.4 6 7 3.5-.6 6-3.7 6-7V4L8 1z" stroke="var(--green)" strokeWidth="1.2" strokeLinejoin="round"/>
+            <path d="M5.5 8l1.5 1.5L10.5 6" stroke="var(--green)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             VRUNAI runs entirely in your browser. No backend, no data collection. API keys never leave your machine except to call the provider you selected.
@@ -637,7 +637,7 @@ export function EvaluateScreen({ spec, providers, onLoad, onRun, onDemoRun, onGo
                   style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
                   onMouseEnter={e => {
                     e.currentTarget.style.borderColor = 'var(--overlay-active)'
-                    e.currentTarget.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.06), 0 4px 20px rgba(255,255,255,0.05)'
+                    e.currentTarget.style.boxShadow = '0 0 0 1px var(--border-focus), 0 4px 20px rgba(139,92,246,0.08)'
                   }}
                   onMouseLeave={e => {
                     e.currentTarget.style.borderColor = 'var(--border)'
@@ -651,7 +651,7 @@ export function EvaluateScreen({ spec, providers, onLoad, onRun, onDemoRun, onGo
                   </div>
                   <div
                     className="flex items-center gap-1.5 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ color: 'var(--green-accent)' }}
+                    style={{ color: 'var(--accent)' }}
                   >
                     <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                       <path d="M3 2l6 4-6 4V2z" fill="currentColor" />
@@ -668,7 +668,7 @@ export function EvaluateScreen({ spec, providers, onLoad, onRun, onDemoRun, onGo
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
-          <span className="text-xs font-medium" style={{ background: 'linear-gradient(90deg, #00E5FF, #6338E0, #FF0080)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Also available as CLI:</span>
+          <span className="text-xs font-medium" style={{ background: 'var(--brand-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Also available as CLI:</span>
           <code className="text-xs px-2 py-0.5 rounded select-all" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>npm install -g vrunai</code>
         </div>
       </div>

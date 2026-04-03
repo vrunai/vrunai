@@ -82,8 +82,8 @@ export function Sidebar({ active, onNav, providerCount, historyCount, totalRunni
           style={{
             margin: '0 8px 8px',
             padding: '8px 10px',
-            background: 'rgba(16,185,129,0.08)',
-            border: '1px solid rgba(16,185,129,0.35)',
+            background: 'var(--brand-muted)',
+            border: '1px solid var(--border-focus)',
             borderRadius: 8,
             cursor: 'pointer',
             textAlign: 'left',
@@ -91,12 +91,12 @@ export function Sidebar({ active, onNav, providerCount, historyCount, totalRunni
           }}
         >
           <div className="flex items-center gap-2">
-            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--green-accent)', animation: 'pulse 1.4s ease-in-out infinite' }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--green-accent)' }}>
+            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
               {totalRunningCount === 1 ? 'Evaluation running' : `${totalRunningCount} evaluations running`}
             </span>
           </div>
-          <div style={{ fontSize: 10, color: 'var(--green-light)', marginTop: 2, paddingLeft: 15 }}>
+          <div style={{ fontSize: 10, color: 'var(--accent-light)', marginTop: 2, paddingLeft: 15 }}>
             {totalRunningCount === 1 ? 'Click to return' : 'Click to see all'}
           </div>
         </button>
