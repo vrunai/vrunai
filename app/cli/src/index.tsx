@@ -13,6 +13,12 @@ import { App } from './App.js';
         process.exit(0);
     }
 
+    if (args[0] === 'web') {
+        const { handleWebCommand } = await import('./commands/web.js');
+        await handleWebCommand(args.slice(1));
+        process.exit(0);
+    }
+
     // Enter alternate screen buffer so each process start gets a clean canvas.
     // This prevents stale output from previous runs (e.g. tsx hot-reload restarts)
     // from remaining visible behind the new render.
