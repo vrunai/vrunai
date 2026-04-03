@@ -35,7 +35,7 @@ function RunCard({ run, onSelect, onCancel }: { run: RunningSnapshot; onSelect: 
         transition: 'border-color 0.15s',
         width: '100%',
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.35)' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-focus)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)' }}
     >
       {/* Header */}
@@ -69,7 +69,7 @@ function RunCard({ run, onSelect, onCancel }: { run: RunningSnapshot; onSelect: 
         <div style={{
           height: '100%',
           width: `${pct}%`,
-          background: 'linear-gradient(90deg, var(--accent), #a78bfa)',
+          background: 'var(--brand-gradient-subtle)',
           borderRadius: 2,
           transition: 'width 0.3s ease',
         }} />
@@ -109,7 +109,7 @@ export function RunningOverviewScreen({ runs, onSelect, onCancel }: Props) {
           </h1>
           <span style={{
             fontSize: 11, padding: '2px 8px', borderRadius: 10,
-            background: 'rgba(255,255,255,0.10)', color: 'var(--accent)', fontWeight: 600,
+            background: 'var(--brand-muted)', color: 'var(--accent)', fontWeight: 600,
           }}>
             {runs.length}
           </span>

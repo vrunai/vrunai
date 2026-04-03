@@ -18,8 +18,8 @@ export function FlowGraph({ flow, trace, scenario }: Props) {
         const entry = trace.find(t => t.step === f.step)
         const expected = scenario.expectedPath?.includes(f.step) ?? false
         const color = entry
-          ? (expected ? 'var(--green)' : '#eab308')
-          : (expected ? 'var(--red)' : '#555')
+          ? (expected ? 'var(--green)' : 'var(--yellow)')
+          : (expected ? 'var(--red)' : 'var(--text-faint)')
         const isExpanded = expandedStep === f.step
 
         return (

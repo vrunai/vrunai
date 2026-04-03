@@ -135,8 +135,8 @@ export function HistoryScreen({ history, onOpen, onDelete, onClear }: Props) {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--bg-muted)' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="#52525f" strokeWidth="1.5"/>
-                <path d="M12 7v5l3 3" stroke="#52525f" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="12" cy="12" r="9" stroke="var(--text-muted)" strokeWidth="1.5"/>
+                <path d="M12 7v5l3 3" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No evaluations yet</p>

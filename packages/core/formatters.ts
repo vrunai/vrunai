@@ -25,7 +25,8 @@ export function uid(): string {
 }
 
 export function pctColor(ratio: number): string {
-    if (ratio >= 0.8) return '#22c55e';
-    if (ratio >= 0.5) return '#f59e0b';
-    return '#ef4444';
+    if (ratio >= 0.9) return '#22C55E';
+    if (ratio >= 0.7) return '#3B82F6';
+    if (ratio >= 0.5) return '#F59E0B';
+    return '#EF4444';
 }
