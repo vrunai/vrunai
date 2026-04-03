@@ -6,26 +6,25 @@
 // and some older terminals do not — they get named ANSI colors instead.
 const truecolor = process.env.COLORTERM === 'truecolor' || process.env.COLORTERM === '24bit';
 
-// Hex palette derived from logo gradient (cyan → indigo → pink).
-// ANSI fallback uses named colors for maximum compatibility.
+// Brand palette (violet-centric) with ANSI fallback for compatibility.
 export const colors = truecolor ? {
-    success:   '#34d399',  // soft emerald
-    error:     '#f87171',  // soft coral
-    warning:   '#fbbf24',  // warm amber
-    focus:     '#22d3ee',  // brand cyan — interactive
-    accent:    '#a78bfa',  // brand indigo — informational
-    tool:      '#c084fc',  // purple
-    muted:     '#6b7280',  // gray-500
-    highlight: '#f472b6',  // brand pink
+    success:   '#22C55E',  // semantic green — pass, checkmarks
+    error:     '#EF4444',  // semantic red — fail, errors
+    warning:   '#F59E0B',  // semantic amber — caution, medium scores
+    focus:     '#8B5CF6',  // brand violet — interactive: cursor, selected, active
+    accent:    '#A78BFA',  // violet light — informational: titles, links, labels
+    tool:      '#D946EF',  // brand magenta — tool names in flow graph
+    muted:     '#64748B',  // slate-500 — borders, secondary text, dim
+    highlight: '#3B82F6',  // brand blue — info emphasis, trust/enterprise
 } : {
     success:   'green',
     error:     'red',
     warning:   'yellow',
-    focus:     'cyan',
+    focus:     'magenta',
     accent:    'magenta',
     tool:      'magenta',
     muted:     'gray',
-    highlight: 'magenta',
+    highlight: 'blue',
 };
 
 export const spacing = {
@@ -62,9 +61,13 @@ export const borders = {
 
 export const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
-/** Returns a semantic color for a metric value (0-1). */
+/** Returns a semantic color for a metric value (0-1) using 4-tier scoring. */
 export function metricColor(v: number): string {
-    return v === 1 ? colors.success : v >= 0.8 ? colors.warning : colors.error;
+    const pct = v * 100;
+    if (pct >= 90) return colors.success;    // 90-100%: excellent
+    if (pct >= 70) return colors.highlight;  // 70-89%: good (brand blue)
+    if (pct >= 50) return colors.warning;    // 50-69%: needs attention
+    return colors.error;                     // 0-49%: poor
 }
 
 /** Format milliseconds as human-readable duration. */
