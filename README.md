@@ -65,10 +65,11 @@ VRUNAI tracks **path accuracy**, **tool accuracy**, and **outcome accuracy** sep
 
 ```bash
 npm install -g vrunai
-vrunai
+vrunai          # Launch the interactive TUI
+vrunai web      # Launch the web UI at http://localhost:3120
 ```
 
-This launches the interactive TUI. Configure your LLM providers, load a YAML spec, and run evaluations.
+The TUI and web UI share the same evaluation engine. Configure your LLM providers, load a YAML spec, and run evaluations.
 
 ## 📝 Agent Definition Language
 
@@ -212,7 +213,19 @@ All models from these providers are supported. Custom base URLs are available fo
 
 ### Web App
 
-VRUNAI also ships a React web interface with the same functionality as the TUI.
+VRUNAI also ships a browser-based web interface with the same functionality as the TUI.
+
+```bash
+vrunai web
+```
+
+This starts a local server at `http://localhost:3120`. You can specify a custom port:
+
+```bash
+vrunai web 8080
+```
+
+For development with hot reload:
 
 ```bash
 pnpm dev:web
@@ -234,7 +247,8 @@ pnpm install
 |---------|-------------|
 | `pnpm build` | Build all packages |
 | `pnpm dev` | Start TUI in dev mode |
-| `pnpm dev:web` | Start web app in dev mode |
+| `pnpm dev:web` | Start web app in dev mode (hot reload) |
+| `vrunai web` | Serve the built web UI locally |
 | `pnpm lint` | Lint all packages |
 | `pnpm typecheck` | Type-check all packages |
 
