@@ -30,10 +30,10 @@ export function Badge({ variant = 'muted', children, className = '' }: Props) {
 
 export function PassBadge({ value }: { value: number }) {
   const color  = pctColor(value)
-  const bg     = color === '#22C55E' ? 'rgba(34,197,94,0.10)'
-               : color === '#3B82F6' ? 'rgba(59,130,246,0.10)'
-               : color === '#F59E0B' ? 'rgba(245,158,11,0.10)'
-               : 'rgba(239,68,68,0.10)'
+  const bg     = color === '#9ece6a' ? 'rgba(158,206,106,0.10)'
+               : color === '#7aa2f7' ? 'rgba(122,162,247,0.10)'
+               : color === '#e0af68' ? 'rgba(224,175,104,0.10)'
+               : 'rgba(247,118,142,0.10)'
   const label  = value >= 0.9 ? '✓' : value >= 0.7 ? '●' : value >= 0.5 ? '~' : '✗'
   return (
     <span

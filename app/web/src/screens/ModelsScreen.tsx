@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react'
 import { getAllModels, formatContextWindow, fmtUsd, type ModelConfig } from '@vrunai/core'
 
 const PROVIDER_COLORS: Record<string, string> = {
-  openai:    '#10B981',
-  anthropic: '#8B5CF6',
-  google:    '#3B82F6',
-  mistral:   '#F59E0B',
-  meta:      '#EF4444',
+  openai:    '#73daca',
+  anthropic: '#bb9af7',
+  google:    '#7aa2f7',
+  mistral:   '#e0af68',
+  meta:      '#f7768e',
 }
 
 function providerColor(provider: string): string {
