@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
-import { chmodSync, readFileSync } from 'fs';
+import { chmodSync, readFileSync, cpSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
@@ -23,3 +24,14 @@ await build({
 
 chmodSync('dist/index.js', 0o755);
 console.log('Build complete → dist/index.js');
+
+// Copy web UI dist into cli/dist/web/ so `vrunai web` can serve it
+const webDist = join('..', 'web', 'dist');
+const target = join('dist', 'web');
+if (existsSync(join(webDist, 'index.html'))) {
+    mkdirSync(target, { recursive: true });
+    cpSync(webDist, target, { recursive: true });
+    console.log('Copied web UI  → dist/web/');
+} else {
+    console.log('Skipped web UI — app/web/dist not found (run web build first)');
+}
