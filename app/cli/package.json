@@ -1,6 +1,6 @@
 {
   "name": "vrunai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LLM agent evaluation framework — define agent behaviour in YAML, evaluate against multiple models, compare results",
   "license": "AGPL-3.0-only",
   "type": "module",
