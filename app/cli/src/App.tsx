@@ -18,7 +18,7 @@ import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { colors, symbols, spacing, borders, msStr, maskApiKey, truncate, fmtCost } from './theme.js';
 import { loadConfig, addProvider, deleteProvider, addRecentPath, getRecentPaths, type SavedProvider } from './config.js';
 
-const PKG_VERSION = '0.1.1';
+declare const PKG_VERSION: string; // injected by esbuild from package.json
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
