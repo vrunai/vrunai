@@ -82,75 +82,84 @@
   --code-comment: #51597d;
 }
 
-/* Light theme */
+/* Light theme — Tokyo Night Light */
 :root.light {
-  --brand-primary: #7C3AED;
-  --brand-hover: #6D28D9;
-  --brand-light: #8B5CF6;
-  --brand-muted: rgba(124, 58, 237, 0.10);
-  --brand-gradient: linear-gradient(90deg, #2563EB, #7C3AED, #C026D3);
-  --brand-gradient-subtle: linear-gradient(90deg, #2563EB, #7C3AED);
-  --brand-blue: #2563EB;
-  --brand-magenta: #C026D3;
+  /* Brand */
+  --brand-primary: #2959aa;
+  --brand-hover: #1e4388;
+  --brand-light: #506fca;
+  --brand-muted: rgba(41, 89, 170, 0.10);
+  --brand-gradient: linear-gradient(90deg, #2959aa, #7b43ba, #8c4351);
+  --brand-gradient-subtle: linear-gradient(90deg, #2959aa, #7b43ba);
+  --brand-blue: #2959aa;
+  --brand-magenta: #7b43ba;
 
-  --bg-base:      #f8f8fa;
-  --bg-surface:   #ffffff;
-  --bg-elevated:  #f0f0f3;
-  --bg-muted:     #f0f0f3;
-  --bg-subtle:    #e8e8ed;
-  --bg-inset:     #f0f0f3;
+  /* Backgrounds */
+  --bg-base:      #e6e7ed;
+  --bg-surface:   #d6d8df;
+  --bg-elevated:  #dcdee3;
+  --bg-muted:     #dcdee3;
+  --bg-subtle:    #cdced1;
+  --bg-inset:     #e6e7ed;
 
-  --border:       rgba(124, 58, 237, 0.16);
-  --border-default: rgba(124, 58, 237, 0.22);
-  --border-focus: rgba(124, 58, 237, 0.35);
+  /* Borders */
+  --border:       rgba(193, 194, 199, 0.6);
+  --border-default: #c1c2c7;
+  --border-focus: rgba(41, 89, 170, 0.45);
   --border-neutral: rgba(0, 0, 0, 0.06);
 
-  --text-primary: #111113;
-  --text-secondary: #555566;
-  --text-muted:   #888899;
-  --text-soft:    #444455;
-  --text-faint:   #999;
+  /* Text */
+  --text-primary: #343b58;
+  --text-secondary: #363c4d;
+  --text-muted:   #707280;
+  --text-soft:    #4a5272;
+  --text-faint:   #9da0ab;
 
-  --accent:       #7C3AED;
-  --accent-hover: #6D28D9;
-  --accent-light: #8B5CF6;
+  /* Accent */
+  --accent:       #2959aa;
+  --accent-hover: #1e4388;
+  --accent-light: #506fca;
 
-  --green:        #16a34a;
-  --yellow:       #d97706;
-  --red:          #dc2626;
-  --green-accent: #059669;
-  --green-light:  #065f46;
-  --red-light:    #dc2626;
-  --color-success-bg: rgba(22, 163, 74, 0.08);
-  --color-warning-bg: rgba(217, 119, 6, 0.08);
-  --color-error-bg: rgba(220, 38, 38, 0.08);
-  --color-info: #2563EB;
-  --color-info-bg: rgba(37, 99, 235, 0.08);
+  /* Semantic */
+  --green:        #33635c;
+  --yellow:       #8f5e15;
+  --red:          #8c4351;
+  --green-accent: #166775;
+  --green-light:  #296973;
+  --red-light:    #942f2f;
+  --color-success-bg: rgba(51, 99, 92, 0.10);
+  --color-warning-bg: rgba(143, 94, 21, 0.10);
+  --color-error-bg: rgba(140, 67, 81, 0.10);
+  --color-info: #2959aa;
+  --color-info-bg: rgba(41, 89, 170, 0.10);
 
-  --btn-primary-bg: linear-gradient(90deg, #2563EB, #7C3AED);
-  --btn-primary-bg-hover: linear-gradient(90deg, #1D4ED8, #6D28D9);
+  /* Interactive */
+  --btn-primary-bg: linear-gradient(135deg, #2959aa, #506fca);
+  --btn-primary-bg-hover: linear-gradient(135deg, #1e4388, #3d5cb5);
   --btn-primary-text: #ffffff;
-  --btn-secondary-border: #7C3AED;
-  --btn-secondary-text: #8B5CF6;
-  --btn-secondary-hover-bg: rgba(124, 58, 237, 0.06);
-  --input-border: rgba(124, 58, 237, 0.18);
-  --input-focus: #7C3AED;
-  --link-color: #7C3AED;
-  --link-hover: #8B5CF6;
-  --tab-active: #7C3AED;
+  --btn-secondary-border: #2959aa;
+  --btn-secondary-text: #506fca;
+  --btn-secondary-hover-bg: rgba(41, 89, 170, 0.06);
+  --input-border: #c1c2c7;
+  --input-focus: #2959aa;
+  --link-color: #2959aa;
+  --link-hover: #0f4b6e;
+  --tab-active: #2959aa;
 
-  --overlay-active: rgba(124, 58, 237, 0.08);
-  --overlay-hover:  rgba(124, 58, 237, 0.04);
+  /* Overlays */
+  --overlay-active: rgba(41, 89, 170, 0.08);
+  --overlay-hover:  rgba(41, 89, 170, 0.04);
 
-  --code-bg:      #f0f0f3;
-  --code-cyan:    #059669;
-  --code-purple:  #7c3aed;
-  --code-keyword: #7c3aed;
-  --code-text:    #111113;
-  --code-flag:    #888899;
-  --code-string:  #059669;
-  --code-number:  #d97706;
-  --code-comment: #888899;
+  /* Syntax */
+  --code-bg:      #dcdee3;
+  --code-cyan:    #33635c;
+  --code-purple:  #65359d;
+  --code-keyword: #65359d;
+  --code-text:    #343b58;
+  --code-flag:    #707280;
+  --code-string:  #385f0d;
+  --code-number:  #965027;
+  --code-comment: #888b94;
 }
 
 * {
@@ -201,4 +210,7 @@ select {
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 2rem !important;
+}
+:root.light select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%23363c4d' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");
 }
