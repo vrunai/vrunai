@@ -1,4 +1,5 @@
 <div align="center">
+   <img src="https://raw.githubusercontent.com/vrunai/vrunai/main/logo/mono-light/mark-48.svg" alt="VRUNAI logo" width="48" height="48" />
    <h1>VRUNAI</h1>
    <h3>
       Open-source CLI for evaluating LLM agents beyond output accuracy
@@ -15,6 +16,12 @@
    </a>
 </div>
 
+## The Problem
+
+Most teams evaluate agents by checking the final output. But agents can produce the correct result via the wrong path — skipping tool calls, hallucinating intermediate values, or taking shortcuts that work in testing but fail in production.
+
+VRUNAI tracks **path accuracy**, **tool accuracy**, and **outcome accuracy** separately — and catches bugs that output-only evaluation misses.
+
 ## Install
 
 ```bash
@@ -24,24 +31,22 @@ npm install -g vrunai
 ## Usage
 
 ```bash
-vrunai
+vrunai          # Launch the interactive TUI
+vrunai web      # Launch the web UI at http://localhost:3120
 ```
 
-This launches the interactive TUI where you can configure providers, load a YAML spec, and run evaluations.
+The TUI and web UI share the same evaluation engine. Configure your LLM providers, load a YAML spec, and run evaluations.
 
-### Model Catalog
+### CLI Commands
 
 ```bash
 vrunai models list          # List all built-in models with pricing
 vrunai models show <id>     # Show details for a specific model
 vrunai models validate      # Validate your custom models config
+vrunai web [port]           # Start the web UI (default port: 3120)
 ```
 
-## What It Does
-
-Most teams evaluate agents by checking the final output. But agents can produce the correct result via the wrong path — skipping tool calls, hallucinating intermediate values, or taking shortcuts that work in testing but fail in production.
-
-VRUNAI tracks **path accuracy**, **tool accuracy**, and **outcome accuracy** separately — and catches bugs that output-only evaluation misses.
+## What It Evaluates
 
 | Metric | What it measures |
 |--------|-----------------|
@@ -113,11 +118,35 @@ scoring:
   runs_per_scenario: 3
 ```
 
+### Spec Reference
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `agent.name` | yes | Display name |
+| `agent.description` | yes | Short description of what the agent does |
+| `agent.instruction` | yes | System prompt sent to the model |
+| `tools[]` | yes | Tool definitions with input/output schemas and mock data |
+| `tools[].mock[]` | yes | Input/output pairs used instead of real tool calls |
+| `flow[]` | yes | Ordered steps; each maps to a tool or a conditional branch |
+| `flow[].condition` | no | `if`/`then`/`else` branch based on a previous step's output |
+| `scenarios[]` | yes | Test cases: input, context, expected path/tools/outcome |
+| `scenarios[].mock_override` | no | Per-scenario override of a tool's mock output |
+| `providers[]` | yes | Models to evaluate; matched against configured API keys |
+| `scoring.runs_per_scenario` | no | Times to run each scenario (default: 1) |
+
 ## Supported Providers
 
-OpenAI, Anthropic, Google Gemini, xAI, DeepSeek, Mistral, and any OpenAI-compatible endpoint (including Ollama for local models).
+<p align="center">
+   <img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI" />
+   <img src="https://img.shields.io/badge/Anthropic-191919?style=for-the-badge&logo=anthropic&logoColor=white" alt="Anthropic" />
+   <img src="https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Google Gemini" />
+   <img src="https://img.shields.io/badge/xAI-000000?style=for-the-badge&logo=x&logoColor=white" alt="xAI" />
+   <img src="https://img.shields.io/badge/DeepSeek-0A6DC2?style=for-the-badge&logo=deepseek&logoColor=white" alt="DeepSeek" />
+   <img src="https://img.shields.io/badge/Mistral-FF7000?style=for-the-badge&logo=mistral&logoColor=white" alt="Mistral" />
+   <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama" />
+</p>
 
-29 built-in models with pricing. Add your own via `~/.config/vrunai/models.json`.
+26 built-in models with pricing. Custom base URLs supported for local or self-hosted models. Add your own via `~/.config/vrunai/models.json`.
 
 ## Links
 
