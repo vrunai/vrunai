@@ -95,16 +95,16 @@
   --brand-magenta: #7b43ba;
 
   /* Backgrounds */
-  --bg-base:      #e6e7ed;
-  --bg-surface:   #d6d8df;
-  --bg-elevated:  #dcdee3;
-  --bg-muted:     #dcdee3;
-  --bg-subtle:    #cdced1;
-  --bg-inset:     #e6e7ed;
+  --bg-base:      #f5f5f8;
+  --bg-surface:   #ecedf2;
+  --bg-elevated:  #f0f1f5;
+  --bg-muted:     #f0f1f5;
+  --bg-subtle:    #e2e3ea;
+  --bg-inset:     #f5f5f8;
 
   /* Borders */
-  --border:       rgba(193, 194, 199, 0.6);
-  --border-default: #c1c2c7;
+  --border:       rgba(193, 194, 199, 0.45);
+  --border-default: #d0d1d8;
   --border-focus: rgba(41, 89, 170, 0.45);
   --border-neutral: rgba(0, 0, 0, 0.06);
 
@@ -140,7 +140,7 @@
   --btn-secondary-border: #2959aa;
   --btn-secondary-text: #506fca;
   --btn-secondary-hover-bg: rgba(41, 89, 170, 0.06);
-  --input-border: #c1c2c7;
+  --input-border: #d0d1d8;
   --input-focus: #2959aa;
   --link-color: #2959aa;
   --link-hover: #0f4b6e;
@@ -151,7 +151,7 @@
   --overlay-hover:  rgba(41, 89, 170, 0.04);
 
   /* Syntax */
-  --code-bg:      #dcdee3;
+  --code-bg:      #ecedf2;
   --code-cyan:    #33635c;
   --code-purple:  #65359d;
   --code-keyword: #65359d;
