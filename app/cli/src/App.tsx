@@ -288,8 +288,7 @@ function ProvidersPresetSelectStep({
 
 // ── Step: Provider form ───────────────────────────────────────────────────────
 
-const FORM_FIELDS = ['name', 'model', 'apiKey', 'baseUrl'] as const;
-type FieldKey = typeof FORM_FIELDS[number];
+type FieldKey = 'name' | 'model' | 'apiKey' | 'baseUrl';
 
 const FIELD_LABELS: Record<FieldKey, string> = {
     name:    'Display name',
@@ -693,7 +692,6 @@ function RunningStep({
         ).then(results => {
             if (cancelledRef.current) { onCancel(); } else { onComplete(results); }
         });
-    // eslint-disable-next-line
     }, []);
 
     const totalRuns = providers.length * spec.scenarios.length * runsPerScenario;
@@ -846,7 +844,7 @@ function FlowGraph({ flow, trace, scenario }: {
 
 // ── Results: scenario detail (expandable, any scenario) ───────────────────────
 
-function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav }: {
+function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav: _onRunNav }: {
     m: ScenarioMetrics; scenario: Scenario; flow: Flow[];
     activeRunIdx?: number; onRunNav?: (delta: -1 | 1) => void;
 }) {
@@ -1000,7 +998,7 @@ function scanHistoryEntries(): HistoryEntry[] {
     const dirs = [process.cwd(), historyDir];
     const entries: HistoryEntry[] = [];
     for (const dir of dirs) {
-        let files: string[] = [];
+        let files: string[];
         try { files = fs.readdirSync(dir).filter(f => /^.+_-_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}\.json$/.test(f)); }
         catch { continue; }
         for (const file of files) {
@@ -1212,7 +1210,7 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
             const k = allItems[cursorIdx]?.key;
             if (k) setExpanded(prev => {
                 const next = new Set(prev);
-                next.has(k) ? next.delete(k) : next.add(k);
+                if (next.has(k)) next.delete(k); else next.add(k);
                 return next;
             });
         }
@@ -1491,7 +1489,6 @@ function ProviderTestStep({ providerName, onDone }: { providerName: string; onDo
             baseUrl: saved.baseUrl,
         });
         testConnection(provider).then(setResult);
-    // eslint-disable-next-line
     }, []);
 
     return (

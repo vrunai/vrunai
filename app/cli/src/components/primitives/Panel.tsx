@@ -18,7 +18,7 @@ export function Panel({
     return (
         <Box
             flexDirection="column"
-            borderStyle={(borderStyle ?? borders.panel) as any}
+            borderStyle={(borderStyle ?? borders.panel) as 'round' | 'single' | 'double' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic'}
             borderColor={borderColor ?? colors.muted}
             paddingX={1}
             overflowY="hidden"
