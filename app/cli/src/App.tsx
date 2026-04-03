@@ -1,16 +1,24 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, Spacer, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ScenarioRunner, makeProvider as coreProvider, PRESETS as CORE_PRESETS, parseYamlText, EXAMPLES, testConnection, DEMO_RESULTS } from '@vrunai/core';
+import { ScenarioRunner, makeProvider as coreProvider, parseYamlText, EXAMPLES, testConnection, DEMO_RESULTS } from '@vrunai/core';
 import { parse, saveResults, autoSaveToHistory, loadModelConfig, validateUserModelConfig } from '@vrunai/core/node';
 import type { AgentSpec, ScenarioMetrics, ProviderRef, Scenario, Flow, TraceEntry } from '@vrunai/types';
 import type { ModelConfig, Provider, ProviderKind } from '@vrunai/core';
 import { Logo } from './components/Logo.js';
-import { loadConfig, addProvider, deleteProvider, addRecentPath, type SavedProvider } from './config.js';
+import { Badge, Bar, Pct, Panel, Separator, StatusBar, StatusIcon, KeyValue, MenuSelect } from './components/primitives/index.js';
+import { ScreenLayout } from './components/layout/ScreenLayout.js';
+import { useSpinner } from './hooks/useSpinner.js';
+import { useElapsed, fmtElapsed } from './hooks/useElapsed.js';
+import { useTerminalSize } from './hooks/useTerminalSize.js';
+import { colors, symbols, spacing, borders, msStr, maskApiKey, truncate, fmtCost } from './theme.js';
+import { loadConfig, addProvider, deleteProvider, addRecentPath, getRecentPaths, type SavedProvider } from './config.js';
+
+declare const PKG_VERSION: string; // injected by esbuild from package.json
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +31,7 @@ type Step =
     | { kind: 'providers-form'; preset: 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'custom';
         fields: { name: string; apiKey: string; model: string; baseUrl: string };
         activeField: number }
+    | { kind: 'providers-test'; providerName: string }
     // ── Evaluate ─────────────────────────────────────────────────────────────
     | { kind: 'example-select' }
     | { kind: 'input'; value: string; error?: string }
@@ -53,50 +62,18 @@ const PRESETS = {
     custom:    { label: 'Custom',    baseUrl: '',                                          defaultModel: '' },
 } as const;
 
-// ── Spinner ───────────────────────────────────────────────────────────────────
-
-const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-function useSpinner(): string {
-    const [frame, setFrame] = useState(0);
-    useEffect(() => {
-        const id = setInterval(() => setFrame(f => (f + 1) % FRAMES.length), 80);
-        return () => clearInterval(id);
-    }, []);
-    return FRAMES[frame];
-}
-
-// ── Progress bar ──────────────────────────────────────────────────────────────
-
-function Bar({ done, total, width = 20 }: { done: number; total: number; width?: number }) {
-    const filled = total > 0 ? Math.round((done / total) * width) : 0;
-    return (
-        <Text>
-            <Text color="green">{'█'.repeat(filled)}</Text>
-            <Text dimColor>{'░'.repeat(width - filled)}</Text>
-        </Text>
-    );
-}
-
 // ── Scenario row ──────────────────────────────────────────────────────────────
 
 function ScenarioRow({ name, progress, spinner }: { name: string; progress: ScenarioProgress; spinner: string }) {
     const { done, total } = progress;
     const finished = done >= total;
     const started  = done > 0;
-
-    const statusIcon = finished ? (
-        <Text color="green">✓</Text>
-    ) : started ? (
-        <Text color="yellow">{spinner}</Text>
-    ) : (
-        <Text dimColor>·</Text>
-    );
+    const state = finished ? 'success' as const : started ? 'running' as const : 'pending' as const;
 
     return (
         <Box gap={1}>
-            <Box width={2}>{statusIcon}</Box>
-            <Box width={32}><Text>{name.slice(0, 32)}</Text></Box>
+            <Box width={2}><StatusIcon state={state} spinner={spinner} /></Box>
+            <Box width={32}><Text wrap="truncate">{truncate(name, 32)}</Text></Box>
             <Bar done={done} total={total} />
             <Text dimColor>  {done}/{total}</Text>
         </Box>
@@ -105,23 +82,41 @@ function ScenarioRow({ name, progress, spinner }: { name: string; progress: Scen
 
 // ── Step: Menu ────────────────────────────────────────────────────────────────
 
-const MENU_ITEMS = [
-    { label: 'Evaluate',        value: 'evaluate' },
-    { label: 'LLM Providers',   value: 'providers' },
-    { label: 'Model Catalog',   value: 'models' },
-    { label: 'History',         value: 'history' },
-    { label: 'Try an Example',  value: 'example' },
-    { label: 'About',           value: 'about' },
-];
-
 function MenuStep({ onSelect }: { onSelect: (value: string) => void }) {
+    const { rows } = useTerminalSize();
+    const config = loadConfig();
+    const providerCount = config.providers.length;
+    const providerNames = config.providers.slice(0, 3).map(p => p.name).join(', ');
+    const historyCount = scanHistoryEntries().length;
+    const lastRun = scanHistoryEntries()[0];
+
+    const menuItems = [
+        { label: 'Evaluate',        description: 'Run specs against LLM providers', value: 'evaluate' },
+        { label: 'LLM Providers',   description: `${providerCount} configured`,     value: 'providers' },
+        { label: 'Model Catalog',   description: 'Browse pricing & capabilities',   value: 'models' },
+        { label: 'History',         description: `${historyCount} past runs`,        value: 'history' },
+        { label: 'Try an Example',  description: 'Quick demo with built-in specs',  value: 'example' },
+        { label: 'About',           description: 'Version, links, license',         value: 'about' },
+    ];
+
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text dimColor>What would you like to do?</Text>
-            <SelectInput
-                items={MENU_ITEMS}
-                onSelect={item => onSelect(item.value)}
-            />
+        <Box flexDirection="column" height={rows} paddingX={1}>
+            <Logo />
+            <Box flexDirection="column" flexGrow={1}>
+                <Panel>
+                    <MenuSelect items={menuItems} onSelect={onSelect} />
+                </Panel>
+                {(providerCount > 0 || lastRun) && (
+                    <Panel title="Quick Status" titleColor={colors.muted}>
+                        <Box>
+                            {providerCount > 0 && <Text dimColor>Providers: {providerNames}</Text>}
+                            <Spacer />
+                            {lastRun && <Text dimColor>Last run: {lastRun.savedAt}</Text>}
+                        </Box>
+                    </Panel>
+                )}
+            </Box>
+            <StatusBar items={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'q', action: 'quit' }]} />
         </Box>
     );
 }
@@ -137,38 +132,59 @@ function ProvidersListStep({
     onAdd: () => void;
     onBack: () => void;
 }) {
-    useInput((_, key) => { if (key.escape) onBack(); });
     const providers = loadConfig().providers;
+    const [cursor, setCursor] = useState(0);
+    const totalItems = providers.length + 1; // providers + "Add"
 
-    const items = [
-        ...providers.map((p, i) => ({
-            label: `${p.name}  ·  ${p.kind === 'custom' ? p.model : `···${p.apiKey.slice(-4)}`}  ·  ${p.baseUrl}`,
-            value: String(i),
-            key: `provider-${i}`,
-        })),
-        { label: '＋ Add provider', value: '__add__', key: '__add__' },
-        { label: '← Back',         value: '__back__', key: '__back__' },
-    ];
+    useInput((_, key) => {
+        if (key.escape) onBack();
+        if (key.upArrow)   setCursor(i => Math.max(0, i - 1));
+        if (key.downArrow) setCursor(i => Math.min(totalItems - 1, i + 1));
+        if (key.return) {
+            if (cursor < providers.length) onSelect(providers[cursor].name, cursor);
+            else onAdd();
+        }
+    });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>LLM Providers</Text>
-            {providers.length === 0 && (
-                <Text dimColor>No providers saved yet.</Text>
-            )}
-            <SelectInput
-                items={items}
-                onSelect={item => {
-                    if (item.value === '__add__')   onAdd();
-                    else if (item.value === '__back__') onBack();
-                    else {
-                        const i = Number(item.value);
-                        onSelect(providers[i].name, i);
-                    }
-                }}
-            />
-            <Text dimColor>  ↑↓ navigate  ·  Enter select  ·  Esc back</Text>
-        </Box>
+        <ScreenLayout title="LLM Providers"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'detail' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${providers.length} provider${providers.length !== 1 ? 's' : ''}`}>
+            <Panel>
+                {providers.length === 0 && (
+                    <Text dimColor>No providers saved yet.</Text>
+                )}
+                {providers.length > 0 && (
+                    <Box gap={1}>
+                        <Box width={3}><Text> </Text></Box>
+                        <Box width={20}><Text dimColor bold>Name</Text></Box>
+                        <Box width={12}><Text dimColor bold>Type</Text></Box>
+                        <Box width={10}><Text dimColor bold>Key</Text></Box>
+                    </Box>
+                )}
+                {providers.length > 0 && <Separator paddingLeft={spacing.sm} />}
+                {providers.map((p, i) => {
+                    const focused = i === cursor;
+                    return (
+                        <Box key={`p-${i}`} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <Box width={20}><Text color={focused ? colors.focus : undefined}>{truncate(p.name, 19)}</Text></Box>
+                            <Box width={12}><Text dimColor={!focused}>{truncate(p.kind === 'predefined' ? p.preset : 'custom', 11)}</Text></Box>
+                            <Box width={10}><Text dimColor>{maskApiKey(p.apiKey)}</Text></Box>
+                        </Box>
+                    );
+                })}
+                {providers.length > 0 && <Text> </Text>}
+                <Box gap={1}>
+                    <Text color={cursor === providers.length ? colors.focus : undefined}>
+                        {cursor === providers.length ? symbols.cursor : ' '}
+                    </Text>
+                    <Text color={cursor === providers.length ? colors.focus : undefined}>
+                        {symbols.add} Add provider
+                    </Text>
+                </Box>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -177,46 +193,60 @@ function ProvidersListStep({
 function ProvidersDetailStep({
     providerIndex,
     onDelete,
+    onTest,
     onBack,
 }: {
     providerName: string;
     providerIndex: number;
     onDelete: () => void;
+    onTest: () => void;
     onBack: () => void;
 }) {
-    useInput((_, key) => { if (key.escape) onBack(); });
     const provider = loadConfig().providers[providerIndex];
+    const [cursor, setCursor] = useState(0);
+    const actions = ['test', 'delete'] as const;
+
+    useInput((_, key) => {
+        if (key.escape) onBack();
+        if (key.upArrow)   setCursor(i => Math.max(0, i - 1));
+        if (key.downArrow) setCursor(i => Math.min(actions.length - 1, i + 1));
+        if (key.return) {
+            if (actions[cursor] === 'test') onTest();
+            else onDelete();
+        }
+    });
 
     if (!provider) {
         return (
-            <Box paddingLeft={2} paddingTop={1}>
-                <Text color="red">Provider not found.</Text>
-            </Box>
+            <ScreenLayout title="Provider Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Text color={colors.error}>Provider not found.</Text>
+            </ScreenLayout>
         );
     }
 
-    const items = [
-        { label: '✗ Delete',  value: '__delete__' },
-        { label: '← Back',   value: '__back__' },
-    ];
-
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>{provider.name}</Text>
-            <Box flexDirection="column" paddingLeft={1} gap={0}>
-                <Text dimColor>Model:    <Text color="cyan">{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></Text>
-                <Text dimColor>Base URL: {provider.baseUrl}</Text>
-                <Text dimColor>API key:  {'*'.repeat(Math.min(provider.apiKey.length, 8))}…</Text>
-            </Box>
-            <SelectInput
-                items={items}
-                onSelect={item => {
-                    if (item.value === '__delete__') onDelete();
-                    else onBack();
-                }}
-            />
-            <Text dimColor>  ↑↓ navigate  ·  Enter select  ·  Esc back</Text>
-        </Box>
+        <ScreenLayout title="Provider Detail"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel title={provider.name} titleColor={colors.accent}>
+                <KeyValue label="Provider:">{provider.kind === 'predefined' ? provider.preset : 'custom'}</KeyValue>
+                <KeyValue label="Model:"><Text color={colors.accent}>{provider.kind === 'custom' ? provider.model : '(preset)'}</Text></KeyValue>
+                <KeyValue label="Base URL:">{provider.baseUrl}</KeyValue>
+                <KeyValue label="API key:">{maskApiKey(provider.apiKey)}</KeyValue>
+            </Panel>
+            <Panel title="Actions">
+                {actions.map((action, i) => {
+                    const focused = i === cursor;
+                    const label = action === 'test' ? 'Test Connection' : 'Delete';
+                    const c = action === 'delete' ? colors.error : undefined;
+                    return (
+                        <Box key={action} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <Text color={focused ? colors.focus : c}>{label}</Text>
+                        </Box>
+                    );
+                })}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -230,7 +260,6 @@ const PRESET_ITEMS = [
     { label: 'DeepSeek',  value: 'deepseek' },
     { label: 'Mistral',   value: 'mistral' },
     { label: 'Custom',    value: 'custom' },
-    { label: '← Back',   value: '__back__' },
 ];
 
 function ProvidersPresetSelectStep({
@@ -242,25 +271,24 @@ function ProvidersPresetSelectStep({
 }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Add Provider</Text>
-            <Text dimColor>Select a provider type:</Text>
-            <SelectInput
-                items={PRESET_ITEMS}
-                onSelect={item => {
-                    if (item.value === '__back__') onBack();
-                    else onSelect(item.value as 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'custom');
-                }}
-            />
-            <Text dimColor>  ↑↓ navigate  ·  Enter select  ·  Esc back</Text>
-        </Box>
+        <ScreenLayout title="Add Provider"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                <Text dimColor>Select a provider type:</Text>
+                <SelectInput
+                    items={PRESET_ITEMS}
+                    onSelect={item => {
+                        onSelect(item.value as 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'custom');
+                    }}
+                />
+            </Panel>
+        </ScreenLayout>
     );
 }
 
 // ── Step: Provider form ───────────────────────────────────────────────────────
 
-const FORM_FIELDS = ['name', 'model', 'apiKey', 'baseUrl'] as const;
-type FieldKey = typeof FORM_FIELDS[number];
+type FieldKey = 'name' | 'model' | 'apiKey' | 'baseUrl';
 
 const FIELD_LABELS: Record<FieldKey, string> = {
     name:    'Display name',
@@ -308,39 +336,40 @@ function ProvidersFormStep({
     });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Add Provider  <Text dimColor>({PRESETS[preset].label})</Text></Text>
-            {!isCustom && (
-                <Text dimColor>Base URL: {PRESETS[preset].baseUrl}</Text>
-            )}
-            <Box flexDirection="column" gap={0} marginTop={1}>
-                {visibleFields.map((key, idx) => {
-                    const isActive = idx === activeField;
-                    return (
-                        <Box key={key} gap={1} paddingLeft={1}>
-                            <Box width={14}>
-                                <Text color={isActive ? 'cyan' : undefined} dimColor={!isActive}>
-                                    {FIELD_LABELS[key]}:
-                                </Text>
+        <ScreenLayout title={`Add Provider (${PRESETS[preset].label})`}
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'advance' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                {!isCustom && (
+                    <Text dimColor>Base URL: {PRESETS[preset].baseUrl}</Text>
+                )}
+                <Box flexDirection="column" gap={0} marginTop={isCustom ? 0 : 1}>
+                    {visibleFields.map((key, idx) => {
+                        const isActive = idx === activeField;
+                        return (
+                            <Box key={key} gap={1}>
+                                <Box width={14}>
+                                    <Text color={isActive ? colors.focus : undefined} dimColor={!isActive}>
+                                        {FIELD_LABELS[key]}:
+                                    </Text>
+                                </Box>
+                                {isActive ? (
+                                    <TextInput
+                                        value={fields[key]}
+                                        onChange={v => { onChange(key, v); setWarn(false); }}
+                                        onSubmit={handleSubmit}
+                                    />
+                                ) : (
+                                    <Text dimColor={!fields[key]}>
+                                        {fields[key] || '—'}
+                                    </Text>
+                                )}
                             </Box>
-                            {isActive ? (
-                                <TextInput
-                                    value={fields[key]}
-                                    onChange={v => { onChange(key, v); setWarn(false); }}
-                                    onSubmit={handleSubmit}
-                                />
-                            ) : (
-                                <Text dimColor={!fields[key]}>
-                                    {fields[key] || '—'}
-                                </Text>
-                            )}
-                        </Box>
-                    );
-                })}
-            </Box>
-            {warn && <Text color="yellow">  This field is required</Text>}
-            <Text dimColor>  ↑↓ navigate  ·  Enter to advance  ·  Esc to go back</Text>
-        </Box>
+                        );
+                    })}
+                </Box>
+                {warn && <Text color={colors.warning}>This field is required</Text>}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -389,13 +418,13 @@ function MultiSelectList({
                 const isDisabled = !!item.disabled;
                 return (
                     <Box key={item.value} gap={1}>
-                        <Text color={isFocused && !isDisabled ? 'cyan' : undefined}>{isFocused ? '❯' : ' '}</Text>
+                        <Text color={isFocused && !isDisabled ? colors.focus : undefined}>{isFocused ? symbols.cursor : ' '}</Text>
                         {isDisabled
-                            ? <Text dimColor>[–]</Text>
-                            : <Text color={isSelected ? 'cyan' : undefined} dimColor={!isSelected && !isFocused}>{isSelected ? '[x]' : '[ ]'}</Text>
+                            ? <Text dimColor>[{symbols.disabled}]</Text>
+                            : <Text color={isSelected ? colors.focus : undefined} dimColor={!isSelected && !isFocused}>{isSelected ? '[x]' : '[ ]'}</Text>
                         }
                         <Text
-                            color={isFocused && !isDisabled ? 'cyan' : undefined}
+                            color={isFocused && !isDisabled ? colors.focus : undefined}
                             dimColor={isDisabled || (!isSelected && !isFocused)}
                         >
                             {item.label}
@@ -405,12 +434,10 @@ function MultiSelectList({
             })}
             {warn && (
                 <Box marginTop={1}>
-                    <Text color="yellow">  Select at least one provider first</Text>
+                    <Text color={colors.warning}>  Select at least one provider first</Text>
                 </Box>
             )}
-            <Box marginTop={warn ? 0 : 1}>
-                <Text dimColor>  ↑↓ navigate  ·  Space to toggle  ·  Enter to run  ·  Esc to go back</Text>
-            </Box>
+            {warn ? null : <Box marginTop={1} />}
         </Box>
     );
 }
@@ -477,31 +504,32 @@ function ProviderSelectStep({
     const hasSelectable = eligible.length > 0;
 
     if (!hasSelectable && unconfigured.length === 0) {
+        useInput((_, key) => { if (key.escape) onBack(); });
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-                <Text color="yellow">No matching providers with API keys. Add one via LLM Providers.</Text>
-                <SelectInput
-                    items={[{ label: '← Back', value: '__back__' }]}
-                    onSelect={() => onBack()}
-                />
-            </Box>
+            <ScreenLayout title="Select Providers" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel>
+                    <Text color={colors.warning}>No matching providers with API keys. Add one via LLM Providers.</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Select providers to evaluate</Text>
+        <ScreenLayout title="Select Providers"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Space', action: 'toggle' }, { key: 'Enter', action: 'run' }, { key: 'Esc', action: 'back' }]}>
             <Text dimColor>{spec.agent.name}</Text>
             {!hasSelectable && (
-                <Text color="yellow">No providers configured. Add API keys via LLM Providers.</Text>
+                <Text color={colors.warning}>No providers configured. Add API keys via LLM Providers.</Text>
             )}
-            <MultiSelectList
-                items={items}
-                initialSelected={eligible.map(e => e.value)}
-                onConfirm={handleConfirm}
-                onBack={onBack}
-            />
-        </Box>
+            <Panel>
+                <MultiSelectList
+                    items={items}
+                    initialSelected={eligible.map(e => e.value)}
+                    onConfirm={handleConfirm}
+                    onBack={onBack}
+                />
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -544,6 +572,7 @@ function InputStep({
 }) {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [selectedIdx, setSelectedIdx] = useState(-1);
+    const recentPaths = useMemo(() => getRecentPaths(), []);
 
     useEffect(() => {
         setSuggestions(getSuggestions(value));
@@ -559,28 +588,40 @@ function InputStep({
     });
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Box gap={1}>
-                <Text dimColor>Path to spec file:</Text>
-                <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
-            </Box>
-            {suggestions.length > 0 && (
-                <Box flexDirection="column" paddingLeft={4}>
-                    {suggestions.map((s, i) => (
-                        <Box key={s} gap={1}>
-                            <Text color={i === selectedIdx ? 'cyan' : undefined}>
-                                {i === selectedIdx ? '❯' : ' '}
-                            </Text>
-                            <Text color={i === selectedIdx ? 'cyan' : undefined} dimColor={i !== selectedIdx}>
-                                {s}
-                            </Text>
+        <ScreenLayout title="Evaluate"
+            helpItems={[{ key: 'Tab', action: 'cycle' }, { key: 'Enter', action: 'confirm' }, { key: 'Esc', action: 'back' }]}>
+            <Panel borderColor={error ? colors.error : colors.muted}>
+                <Box gap={1}>
+                    <Text dimColor>Path to spec file:</Text>
+                    <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+                </Box>
+                {error && <Text color={colors.error}>{symbols.cross} {error}</Text>}
+                {suggestions.length > 0 && (
+                    <Box flexDirection="column" paddingLeft={spacing.sm} marginTop={1}>
+                        {suggestions.map((s, i) => (
+                            <Box key={s} gap={1}>
+                                <Text color={i === selectedIdx ? colors.focus : undefined}>
+                                    {i === selectedIdx ? symbols.cursor : ' '}
+                                </Text>
+                                <Text color={i === selectedIdx ? colors.focus : undefined} dimColor={i !== selectedIdx}>
+                                    {s}
+                                </Text>
+                            </Box>
+                        ))}
+                    </Box>
+                )}
+            </Panel>
+            {recentPaths.length > 0 && !value && (
+                <Panel title="Recent" titleColor={colors.muted}>
+                    {recentPaths.slice(0, 3).map(p => (
+                        <Box key={p} gap={1}>
+                            <Text dimColor>{symbols.dot}</Text>
+                            <Text dimColor>{p}</Text>
                         </Box>
                     ))}
-                </Box>
+                </Panel>
             )}
-            <Text dimColor>  Tab to cycle  ·  Enter to confirm  ·  Esc to go back</Text>
-            {error && <Text color="red">✗ {error}</Text>}
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -651,7 +692,6 @@ function RunningStep({
         ).then(results => {
             if (cancelledRef.current) { onCancel(); } else { onComplete(results); }
         });
-    // eslint-disable-next-line
     }, []);
 
     const totalRuns = providers.length * spec.scenarios.length * runsPerScenario;
@@ -659,25 +699,45 @@ function RunningStep({
         .flatMap(inner => [...inner.values()])
         .reduce((s, p) => s + p.done, 0);
 
+    const elapsed = useElapsed();
+    const pctDone = totalRuns > 0 ? Math.round((doneTotal / totalRuns) * 100) : 0;
+
+    const eta = doneTotal >= 2 && doneTotal < totalRuns
+        ? `ETA: ~${fmtElapsed(Math.round(elapsed * (totalRuns / doneTotal) - elapsed))}`
+        : '';
+
     if (cancelled) {
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-                <Text color="yellow">Cancelling… waiting for current run to finish</Text>
-                <Text dimColor>  Esc back</Text>
-            </Box>
+            <ScreenLayout title="Running" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel borderColor={colors.warning}>
+                    <Text color={colors.warning}>Cancelling… waiting for current run to finish</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text dimColor>{spec.agent.name}  ·  {runsPerScenario} runs/scenario</Text>
+        <ScreenLayout title="Running"
+            helpItems={[{ key: 'Esc', action: 'cancel' }]}
+            statusLeft={`Elapsed: ${fmtElapsed(elapsed)}`}>
+            <Text dimColor>{spec.agent.name}  {symbols.dot}  {runsPerScenario} runs/scenario</Text>
 
+            {/* Overall progress panel */}
+            <Panel title="Overall" titleColor={colors.accent} borderColor={colors.accent}>
+                <Bar done={doneTotal} total={totalRuns} width={Math.min(Math.max(20, (process.stdout.columns ?? 80) - 20), 60)} />
+                <Box>
+                    <Text dimColor>{doneTotal}/{totalRuns} runs  ({pctDone}%)</Text>
+                    <Spacer />
+                    {eta && <Text dimColor>{eta}</Text>}
+                </Box>
+            </Panel>
+
+            {/* Per-provider panels */}
             {providers.map(provider => {
                 const model       = provider.getConfig().model;
                 const innerMap    = progress.get(model)!;
                 return (
-                    <Box key={model} flexDirection="column" marginTop={1}>
-                        <Text color="cyan">{model}</Text>
+                    <Panel key={model} title={model} titleColor={colors.accent}>
                         {spec.scenarios.map(s => (
                             <ScenarioRow
                                 key={s.name}
@@ -686,27 +746,11 @@ function RunningStep({
                                 spinner={spinner}
                             />
                         ))}
-                    </Box>
+                    </Panel>
                 );
             })}
-
-            <Text dimColor>Progress: {doneTotal}/{totalRuns} runs  ·  Esc to cancel</Text>
-        </Box>
+        </ScreenLayout>
     );
-}
-
-// ── Results helpers ───────────────────────────────────────────────────────────
-
-function msStr(ms: number): string {
-    return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms.toFixed(0)}ms`;
-}
-
-function metricColor(v: number): string {
-    return v === 1 ? 'green' : v >= 0.8 ? 'yellow' : 'red';
-}
-
-function Pct({ value }: { value: number }) {
-    return <Text color={metricColor(value)}>{`${(value * 100).toFixed(0)}%`.padStart(4)}</Text>;
 }
 
 // ── Results: scenario summary row ─────────────────────────────────────────────
@@ -717,16 +761,16 @@ function ScenarioSummaryRow({ m, isFocused, isExpanded }: {
     const pass       = m.path_accuracy === 1 && m.tool_accuracy === 1 && m.outcome_accuracy === 1;
     const passedRuns = m.runs.filter(r => r.pathMatch && r.toolMatch && r.outcomeMatch).length;
     return (
-        <Box gap={1} paddingLeft={2}>
-            <Text color={isFocused ? 'cyan' : undefined}>{isFocused ? '❯' : ' '}</Text>
-            <Text color={pass ? 'green' : 'red'}>{pass ? '✓' : '✗'}</Text>
-            <Box width={30}><Text color={isFocused ? 'cyan' : undefined}>{m.scenarioName.slice(0, 30)}</Text></Box>
+        <Box gap={1} paddingLeft={spacing.sm}>
+            <Text color={isFocused ? colors.focus : undefined}>{isFocused ? symbols.cursor : ' '}</Text>
+            <StatusIcon state={pass ? 'success' : 'error'} />
+            <Box width={30}><Text wrap="truncate" color={isFocused ? colors.focus : undefined}>{truncate(m.scenarioName, 30)}</Text></Box>
             <Pct value={m.path_accuracy} />
             <Pct value={m.tool_accuracy} />
             <Pct value={m.outcome_accuracy} />
             <Text dimColor>{passedRuns}/{m.runs.length}</Text>
-            <Text dimColor>${m.total_cost_usd.toFixed(4)}</Text>
-            <Text dimColor>{isExpanded ? '▼' : '▶'}</Text>
+            <Text dimColor>{fmtCost(m.total_cost_usd)}</Text>
+            <Text dimColor>{isExpanded ? symbols.collapse : symbols.expand}</Text>
         </Box>
     );
 }
@@ -736,6 +780,15 @@ function ScenarioSummaryRow({ m, isFocused, isExpanded }: {
 function FlowGraph({ flow, trace, scenario }: {
     flow: Flow[]; trace: TraceEntry[]; scenario: Scenario;
 }) {
+    /** Truncate a serialized value for display. */
+    function truncVal(v: unknown): string {
+        const s = JSON.stringify(v);
+        return s.length > 60 ? s.slice(0, 57) + '...' : s;
+    }
+    function fmtEntries(obj: Record<string, unknown>): string {
+        return Object.entries(obj).map(([k, v]) => `${k}: ${truncVal(v)}`).join('  ') || '—';
+    }
+
     return (
         <Box flexDirection="column" marginTop={1}>
             <Text dimColor>Flow</Text>
@@ -743,28 +796,28 @@ function FlowGraph({ flow, trace, scenario }: {
                 const entry    = trace.find(t => t.step === f.step);
                 const expected = scenario.expectedPath?.includes(f.step) ?? false;
                 const color    = entry
-                    ? (expected ? 'green' : 'yellow')
-                    : (expected ? 'red'   : undefined);
+                    ? (expected ? colors.success : colors.warning)
+                    : (expected ? colors.error   : undefined);
                 return (
                     <Box key={f.step} flexDirection="column">
-                        {i > 0 && <Box paddingLeft={2}><Text dimColor>│</Text></Box>}
-                        <Box gap={1} paddingLeft={2}>
-                            <Text dimColor>▼</Text>
+                        {i > 0 && <Box paddingLeft={spacing.sm}><Text dimColor>{symbols.pipe}</Text></Box>}
+                        <Box gap={1} paddingLeft={spacing.sm}>
+                            <Text dimColor>{symbols.collapse}</Text>
                             <Text color={color} bold={!!entry}>[{f.step}]</Text>
-                            {f.tool && <Text dimColor>→ {f.tool}</Text>}
-                            {entry && <Text color="green">✓ t{entry.turn}  {msStr(entry.durationMs)}</Text>}
-                            {!entry && expected  && <Text color="red">✗ not called</Text>}
-                            {!entry && !expected && <Text dimColor>· skipped</Text>}
+                            {f.tool && <Text dimColor>{symbols.arrow} {f.tool}</Text>}
+                            {entry && <Text color={colors.success}>{symbols.check} t{entry.turn}  {msStr(entry.durationMs)}</Text>}
+                            {!entry && expected  && <Text color={colors.error}>{symbols.cross} not called</Text>}
+                            {!entry && !expected && <Text dimColor>{symbols.dot} skipped</Text>}
                         </Box>
                         {entry && (
-                            <Box flexDirection="column" paddingLeft={7}>
-                                <Text dimColor>in:  {Object.entries(entry.input).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  ') || '—'}</Text>
-                                <Text dimColor>out: {Object.entries(entry.output).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  ') || '—'}</Text>
+                            <Box flexDirection="column" paddingLeft={spacing.lg}>
+                                <Text dimColor>in:  {fmtEntries(entry.input)}</Text>
+                                <Text dimColor>out: {fmtEntries(entry.output)}</Text>
                             </Box>
                         )}
                         {f.condition && (
-                            <Box paddingLeft={7}>
-                                <Text dimColor>if {f.condition.if} → then: {f.condition.then}  else: {f.condition.else}</Text>
+                            <Box paddingLeft={spacing.lg}>
+                                <Text dimColor>if {f.condition.if} {symbols.arrow} then: {f.condition.then}  else: {f.condition.else}</Text>
                             </Box>
                         )}
                     </Box>
@@ -772,16 +825,16 @@ function FlowGraph({ flow, trace, scenario }: {
             })}
             {trace.filter(t => t.step === '?').map((t, i) => (
                 <Box key={i} flexDirection="column">
-                    <Box paddingLeft={2}><Text dimColor>│</Text></Box>
-                    <Box gap={1} paddingLeft={2}>
-                        <Text dimColor>▼</Text>
-                        <Text color="red">[?]</Text>
-                        <Text color="magenta">{t.toolName}</Text>
-                        <Text color="red">✗ unexpected</Text>
+                    <Box paddingLeft={spacing.sm}><Text dimColor>{symbols.pipe}</Text></Box>
+                    <Box gap={1} paddingLeft={spacing.sm}>
+                        <Text dimColor>{symbols.collapse}</Text>
+                        <Text color={colors.error}>[?]</Text>
+                        <Text color={colors.tool}>{t.toolName}</Text>
+                        <Text color={colors.error}>{symbols.cross} unexpected</Text>
                     </Box>
-                    <Box flexDirection="column" paddingLeft={7}>
-                        <Text dimColor>in:  {Object.entries(t.input).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  ') || '—'}</Text>
-                        <Text dimColor>out: {Object.entries(t.output).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  ') || '—'}</Text>
+                    <Box flexDirection="column" paddingLeft={spacing.lg}>
+                        <Text dimColor>in:  {fmtEntries(t.input)}</Text>
+                        <Text dimColor>out: {fmtEntries(t.output)}</Text>
                     </Box>
                 </Box>
             ))}
@@ -791,39 +844,46 @@ function FlowGraph({ flow, trace, scenario }: {
 
 // ── Results: scenario detail (expandable, any scenario) ───────────────────────
 
-function ScenarioDetail({ m, scenario, flow }: {
+function ScenarioDetail({ m, scenario, flow, activeRunIdx, onRunNav: _onRunNav }: {
     m: ScenarioMetrics; scenario: Scenario; flow: Flow[];
+    activeRunIdx?: number; onRunNav?: (delta: -1 | 1) => void;
 }) {
     const failedRuns  = m.runs.filter(r => !r.pathMatch || !r.toolMatch || !r.outcomeMatch);
-    const runIdx      = failedRuns.length > 0 ? m.runs.indexOf(failedRuns[0]) : 0;
+    const runIdx      = activeRunIdx ?? (failedRuns.length > 0 ? m.runs.indexOf(failedRuns[0]) : 0);
     const run         = m.runs[runIdx];
     const runLabel    = failedRuns.length > 0
-        ? `run ${runIdx + 1}/${m.runs.length} · ${failedRuns.length} failed`
-        : `run ${runIdx + 1}/${m.runs.length} · all passed`;
+        ? `run ${runIdx + 1}/${m.runs.length} ${symbols.dot} ${failedRuns.length} failed`
+        : `run ${runIdx + 1}/${m.runs.length} ${symbols.dot} all passed`;
+    const hasMultiple = m.runs.length > 1;
     return (
-        <Box flexDirection="column" paddingLeft={2} marginTop={1} borderStyle="single" borderColor="cyan" paddingX={1}>
-            <Text dimColor>{runLabel}</Text>
+        <Panel borderStyle={borders.detail} borderColor={colors.accent}>
+            <Box gap={1}>
+                <Text dimColor>{runLabel}</Text>
+                {hasMultiple && <Text dimColor>({symbols.back}/{symbols.arrow} runs)</Text>}
+            </Box>
             <FlowGraph flow={flow} trace={run.trace} scenario={scenario} />
             {!run.outcomeMatch && (
                 <Box flexDirection="column" marginTop={1}>
-                    <Text color="red">✗ outcome mismatch</Text>
+                    <Text color={colors.error}>{symbols.cross} outcome mismatch</Text>
                     <Text dimColor>  expected: {JSON.stringify(scenario.expectedOutcome)}</Text>
                     <Text dimColor>  actual:   {JSON.stringify(run.finalOutput)}</Text>
                 </Box>
             )}
-        </Box>
+        </Panel>
     );
 }
 
 // ── Results: per-model block ───────────────────────────────────────────────────
 
-function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expandedSis }: {
+function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expandedSis, runIndices, onRunNav }: {
     model: string;
     metrics: ScenarioMetrics[];
     scenarios: Scenario[];
     flow: Flow[];
     focusedSi: number;
     expandedSis: Set<number>;
+    runIndices: Map<number, number>;
+    onRunNav: (si: number, delta: -1 | 1) => void;
 }) {
     const avgPath    = metrics.reduce((s, m) => s + m.path_accuracy,    0) / metrics.length;
     const avgTool    = metrics.reduce((s, m) => s + m.tool_accuracy,    0) / metrics.length;
@@ -832,17 +892,21 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
     const totalCost  = metrics.reduce((s, m) => s + m.total_cost_usd,   0);
     const allPass    = metrics.every(m => m.runs.every(r => r.pathMatch && r.toolMatch && r.outcomeMatch));
 
+    const COL_SCENARIO = 34; // 2 (cursor) + 2 (icon+gap) + 30 (name)
+
     return (
-        <Box flexDirection="column" borderStyle="round" borderColor={allPass ? 'green' : 'red'} paddingX={1} marginBottom={1}>
+        <Panel borderColor={allPass ? colors.success : colors.error}>
             <Box gap={2}>
-                <Text bold color="cyan">{model}</Text>
-                <Text dimColor>{msStr(avgLatency)} avg  ·  ${totalCost.toFixed(4)}</Text>
+                <Text bold color={colors.accent}>{model}</Text>
+                <Badge text={allPass ? 'PASS' : 'FAIL'} color={allPass ? colors.success : colors.error} />
+                <Spacer />
+                <Text dimColor>{msStr(avgLatency)} avg  {symbols.dot}  {fmtCost(totalCost)}</Text>
             </Box>
-            <Box gap={1} paddingLeft={2} marginTop={1}>
-                <Box width={36}><Text dimColor>Scenario</Text></Box>
+            <Box gap={1} paddingLeft={spacing.sm} marginTop={1}>
+                <Box width={COL_SCENARIO}><Text dimColor>Scenario</Text></Box>
                 <Text dimColor>path  tool   out  runs   cost</Text>
             </Box>
-            <Box paddingLeft={2}><Text dimColor>{'─'.repeat(64)}</Text></Box>
+            <Separator paddingLeft={spacing.sm} />
             {metrics.map((m, si) => {
                 const isFocused  = focusedSi === si;
                 const isExpanded = expandedSis.has(si);
@@ -851,19 +915,19 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
                     <Box key={m.scenarioName} flexDirection="column">
                         <ScenarioSummaryRow m={m} isFocused={isFocused} isExpanded={isExpanded} />
                         {isExpanded && scenario && (
-                            <ScenarioDetail m={m} scenario={scenario} flow={flow} />
+                            <ScenarioDetail m={m} scenario={scenario} flow={flow} activeRunIdx={runIndices.get(si)} onRunNav={(delta) => onRunNav(si, delta)} />
                         )}
                     </Box>
                 );
             })}
-            <Box paddingLeft={2}><Text dimColor>{'─'.repeat(64)}</Text></Box>
-            <Box gap={1} paddingLeft={4}>
+            <Separator paddingLeft={spacing.sm} />
+            <Box gap={1} paddingLeft={spacing.md}>
                 <Box width={32}><Text bold>Average</Text></Box>
                 <Pct value={avgPath} />
                 <Pct value={avgTool} />
                 <Pct value={avgOutcome} />
             </Box>
-        </Box>
+        </Panel>
     );
 }
 
@@ -871,47 +935,49 @@ function ModelResultBlock({ model, metrics, scenarios, flow, focusedSi, expanded
 
 function ComparisonTable({ results }: { results: { model: string; metrics: ScenarioMetrics[] }[] }) {
     const scenarioNames = results[0].metrics.map(m => m.scenarioName);
-    const COL = 16;
+    const maxModelLen = Math.max(...results.map(r => r.model.length));
+    const COL = Math.max(20, maxModelLen + 2);
+    const NAME_COL = 34;
     return (
-        <Box flexDirection="column" marginTop={1}>
-            <Text bold>Model Comparison</Text>
-            <Box paddingLeft={2} marginTop={1}>
-                <Box width={34}><Text> </Text></Box>
-                {results.map(r => <Box key={r.model} width={COL}><Text bold>{r.model.slice(0, COL - 2)}</Text></Box>)}
+        <Panel title="Model Comparison">
+            <Box paddingLeft={spacing.sm} marginTop={1}>
+                <Box width={NAME_COL}><Text> </Text></Box>
+                {results.map(r => <Box key={r.model} width={COL}><Text bold>{truncate(r.model, COL - 2)}</Text></Box>)}
             </Box>
-            <Box paddingLeft={2}>
-                <Box width={34}><Text> </Text></Box>
-                {results.map(r => <Box key={r.model} width={COL}><Text dimColor>path  out</Text></Box>)}
+            <Box paddingLeft={spacing.sm}>
+                <Box width={NAME_COL}><Text> </Text></Box>
+                {results.map(r => <Box key={r.model} width={COL}><Text dimColor>path  tool  out</Text></Box>)}
             </Box>
-            <Box paddingLeft={2}><Text dimColor>{'─'.repeat(34 + results.length * COL)}</Text></Box>
+            <Separator paddingLeft={spacing.sm} />
             {scenarioNames.map(name => (
-                <Box key={name} paddingLeft={2}>
-                    <Box width={34}><Text>{name.slice(0, 32)}</Text></Box>
+                <Box key={name} paddingLeft={spacing.sm}>
+                    <Box width={NAME_COL}><Text>{truncate(name, 32)}</Text></Box>
                     {results.map(r => {
                         const m = r.metrics.find(x => x.scenarioName === name);
                         return m
-                            ? <Box key={r.model} width={COL} gap={1}><Pct value={m.path_accuracy} /><Pct value={m.outcome_accuracy} /></Box>
+                            ? <Box key={r.model} width={COL} gap={1}><Pct value={m.path_accuracy} /><Pct value={m.tool_accuracy} /><Pct value={m.outcome_accuracy} /></Box>
                             : <Box key={r.model} width={COL} />;
                     })}
                 </Box>
             ))}
-            <Box paddingLeft={2}><Text dimColor>{'─'.repeat(34 + results.length * COL)}</Text></Box>
-            <Box paddingLeft={2}>
-                <Box width={34}><Text bold>Average</Text></Box>
+            <Separator paddingLeft={spacing.sm} />
+            <Box paddingLeft={spacing.sm}>
+                <Box width={NAME_COL}><Text bold>Average</Text></Box>
                 {results.map(r => {
                     const avgP = r.metrics.reduce((s, m) => s + m.path_accuracy,    0) / r.metrics.length;
+                    const avgT = r.metrics.reduce((s, m) => s + m.tool_accuracy,    0) / r.metrics.length;
                     const avgO = r.metrics.reduce((s, m) => s + m.outcome_accuracy, 0) / r.metrics.length;
-                    return <Box key={r.model} width={COL} gap={1}><Pct value={avgP} /><Pct value={avgO} /></Box>;
+                    return <Box key={r.model} width={COL} gap={1}><Pct value={avgP} /><Pct value={avgT} /><Pct value={avgO} /></Box>;
                 })}
             </Box>
-            <Box paddingLeft={2}>
-                <Box width={34}><Text dimColor>Cost</Text></Box>
+            <Box paddingLeft={spacing.sm}>
+                <Box width={NAME_COL}><Text dimColor>Cost</Text></Box>
                 {results.map(r => {
                     const total = r.metrics.reduce((s, m) => s + m.total_cost_usd, 0);
-                    return <Box key={r.model} width={COL}><Text dimColor>${total.toFixed(4)}</Text></Box>;
+                    return <Box key={r.model} width={COL}><Text dimColor>{fmtCost(total)}</Text></Box>;
                 })}
             </Box>
-        </Box>
+        </Panel>
     );
 }
 
@@ -924,6 +990,7 @@ type HistoryEntry = {
     scenarioCount: number;
     savedAt: string;
     sortKey: string;
+    passed: boolean;
 };
 
 function scanHistoryEntries(): HistoryEntry[] {
@@ -931,7 +998,7 @@ function scanHistoryEntries(): HistoryEntry[] {
     const dirs = [process.cwd(), historyDir];
     const entries: HistoryEntry[] = [];
     for (const dir of dirs) {
-        let files: string[] = [];
+        let files: string[];
         try { files = fs.readdirSync(dir).filter(f => /^.+_-_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}\.json$/.test(f)); }
         catch { continue; }
         for (const file of files) {
@@ -942,9 +1009,11 @@ function scanHistoryEntries(): HistoryEntry[] {
             const displayDate = `${ts.slice(0, 10)} ${ts.slice(11, 13)}:${ts.slice(14, 16)}`;
             const filePath = path.join(dir, file);
             try {
-                const raw: { model: string; metrics: { scenarioName: string }[] }[] =
+                const raw: { model: string; metrics: { scenarioName: string; path_accuracy?: number; tool_accuracy?: number; outcome_accuracy?: number }[] }[] =
                     JSON.parse(fs.readFileSync(filePath, 'utf8'));
                 const models = raw.map(r => r.model);
+                const passed = raw.every(r => r.metrics.every(m =>
+                    (m.path_accuracy ?? 0) === 1 && (m.tool_accuracy ?? 0) === 1 && (m.outcome_accuracy ?? 0) === 1));
                 entries.push({
                     filePath,
                     agentName,
@@ -952,6 +1021,7 @@ function scanHistoryEntries(): HistoryEntry[] {
                     scenarioCount: raw[0]?.metrics?.length ?? 0,
                     savedAt: displayDate,
                     sortKey: ts,
+                    passed,
                 });
             } catch { continue; }
         }
@@ -992,41 +1062,47 @@ function HistoryStep({ onOpen, onBack }: {
 
     if (entries.length === 0) {
         return (
-            <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-                <Text bold>History</Text>
-                <Text dimColor>No runs saved yet. Complete an eval to populate history.</Text>
-                <Text dimColor>  Esc back</Text>
-            </Box>
+            <ScreenLayout title="History" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Panel>
+                    <Text dimColor>No runs saved yet. Complete an eval to populate history.</Text>
+                </Panel>
+            </ScreenLayout>
         );
     }
 
     return (
-        <Box flexDirection="column" paddingLeft={2} paddingTop={1} gap={0}>
-            <Text bold>History</Text>
-            <Box gap={1} marginTop={1}>
-                <Box width={2}><Text> </Text></Box>
-                <Box width={32}><Text dimColor>Name</Text></Box>
-                <Box width={22}><Text dimColor>Model</Text></Box>
-                <Box width={10}><Text dimColor>Scenarios</Text></Box>
-                <Text dimColor>Date</Text>
-            </Box>
-            {entries.map((e, i) => {
-                const focused = i === cursor;
-                return (
-                    <Box key={e.filePath} gap={1}>
-                        <Box width={2}><Text color="cyan">{focused ? '❯' : ' '}</Text></Box>
-                        <Box width={32}><Text color={focused ? 'cyan' : undefined}>{e.agentName.slice(0, 31)}</Text></Box>
-                        <Box width={22}><Text dimColor={!focused}>{e.models.slice(0, 21)}</Text></Box>
-                        <Box width={10}><Text dimColor={!focused}>{e.scenarioCount}</Text></Box>
-                        <Text dimColor={!focused}>{e.savedAt}</Text>
-                    </Box>
-                );
-            })}
-            {pendingDelete && entries.length > 0
-                ? <Text color="yellow">  Delete "{entries[cursor].agentName}"? y / any key to cancel</Text>
-                : <Text dimColor>  ↑↓ navigate  ·  Enter open  ·  d  delete  ·  Esc back</Text>
-            }
-        </Box>
+        <ScreenLayout title="History"
+            helpItems={pendingDelete
+                ? [{ key: 'y', action: 'confirm delete' }, { key: 'any key', action: 'cancel' }]
+                : [{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'open' }, { key: 'd', action: 'delete' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${entries.length} run${entries.length !== 1 ? 's' : ''}`}>
+            <Panel>
+                <Box gap={1}>
+                    <Box width={4}><Text> </Text></Box>
+                    <Box width={30}><Text dimColor bold>Name</Text></Box>
+                    <Box width={22}><Text dimColor bold>Model</Text></Box>
+                    <Box width={10}><Text dimColor bold>Scenarios</Text></Box>
+                    <Text dimColor bold>Date</Text>
+                </Box>
+                <Separator />
+                {entries.map((e, i) => {
+                    const focused = i === cursor;
+                    return (
+                        <Box key={e.filePath} gap={1}>
+                            <Text color={focused ? colors.focus : undefined}>{focused ? symbols.cursor : ' '}</Text>
+                            <StatusIcon state={e.passed ? 'success' : 'error'} />
+                            <Box width={30}><Text color={focused ? colors.focus : undefined}>{truncate(e.agentName, 29)}</Text></Box>
+                            <Box width={22}><Text dimColor={!focused}>{truncate(e.models, 21)}</Text></Box>
+                            <Box width={10}><Text dimColor={!focused}>{e.scenarioCount}</Text></Box>
+                            <Text dimColor={!focused}>{e.savedAt}</Text>
+                        </Box>
+                    );
+                })}
+            </Panel>
+            {pendingDelete && entries.length > 0 && (
+                <Text color={colors.warning}>  Delete "{entries[cursor].agentName}"?</Text>
+            )}
+        </ScreenLayout>
     );
 }
 
@@ -1044,31 +1120,30 @@ function SummaryBlock({ results }: { results: { model: string; metrics: Scenario
         const avgOut    = r.metrics.reduce((s, m) => s + m.outcome_accuracy, 0) / n;
         const allPass   = avgPath === 1 && avgTool === 1 && avgOut === 1;
         const allFail   = avgPath === 0 && avgTool === 0 && avgOut === 0;
-        const lineColor = allPass ? 'green' : allFail ? 'red' : 'yellow';
-        const icon      = allPass ? '✓' : allFail ? '✗' : '⚠';
-        lines.push({ text: `${icon} ${r.model}  ${pctStr(avgPath)} path / ${pctStr(avgTool)} tool / ${pctStr(avgOut)} outcome · $${totalCost.toFixed(4)}  ${Math.round(avgLat)}ms avg`, color: lineColor });
+        const lineColor = allPass ? colors.success : allFail ? colors.error : colors.warning;
+        const icon      = allPass ? symbols.check : allFail ? symbols.cross : symbols.warning;
+        lines.push({ text: `${icon} ${r.model}  ${pctStr(avgPath)} path / ${pctStr(avgTool)} tool / ${pctStr(avgOut)} outcome · ${fmtCost(totalCost)}  ${Math.round(avgLat)}ms avg`, color: lineColor });
         if (!allFail) {
             for (const m of r.metrics) {
                 if (m.path_accuracy < 1) {
-                    lines.push({ text: `  ⚠ ${m.scenarioName}: ${pctStr(m.path_accuracy)} path accuracy`, color: 'yellow' });
+                    lines.push({ text: `  ${symbols.warning} ${m.scenarioName}: ${pctStr(m.path_accuracy)} path accuracy`, color: colors.warning });
                     break;
                 }
             }
             for (const m of r.metrics) {
                 if (m.consistency < 1) {
-                    lines.push({ text: `  ⚠ Inconsistent values in ${m.scenarioName} across runs — check trace`, color: 'yellow' });
+                    lines.push({ text: `  ${symbols.warning} Inconsistent values in ${m.scenarioName} across runs — check trace`, color: colors.warning });
                     break;
                 }
             }
         }
     }
     return (
-        <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
-            <Text dimColor>Summary</Text>
+        <Panel title="Summary" borderColor={colors.accent}>
             {lines.map((l, i) => (
                 <Text key={i} color={l.color}>{l.text}</Text>
             ))}
-        </Box>
+        </Panel>
     );
 }
 
@@ -1089,6 +1164,7 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
     const [cursorIdx, setCursorIdx] = useState(0);
     const [expanded, setExpanded]   = useState(new Set<string>());
     const [savedPath, setSavedPath] = useState<string | null>(null);
+    const [runIndices, setRunIndices] = useState(new Map<string, number>());
 
     // ── Viewport scrolling ───────────────────────────────────────────────────
     // Each section is a "page": header, each model block, comparison, summary, footer.
@@ -1116,6 +1192,17 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
         }
     }, [cursorIdx]);
 
+    function handleRunNav(mi: number, si: number, delta: -1 | 1) {
+        const key = `${mi}:${si}`;
+        const total = results[mi].metrics[si].runs.length;
+        setRunIndices(prev => {
+            const next = new Map(prev);
+            const cur = next.get(key) ?? 0;
+            next.set(key, Math.max(0, Math.min(total - 1, cur + delta)));
+            return next;
+        });
+    }
+
     useInput((input, key) => {
         if (key.upArrow)   setCursorIdx(i => Math.max(0, i - 1));
         if (key.downArrow) setCursorIdx(i => Math.min(allItems.length - 1, i + 1));
@@ -1123,12 +1210,21 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
             const k = allItems[cursorIdx]?.key;
             if (k) setExpanded(prev => {
                 const next = new Set(prev);
-                next.has(k) ? next.delete(k) : next.add(k);
+                if (next.has(k)) next.delete(k); else next.add(k);
                 return next;
             });
         }
-        if (key.leftArrow)  setSectionIdx(i => Math.max(0, i - 1));
-        if (key.rightArrow) setSectionIdx(i => Math.min(sections.length - 1, i + 1));
+        // Left/right: navigate runs if current scenario is expanded, otherwise navigate sections
+        const currentItem = allItems[cursorIdx];
+        const currentKey = currentItem?.key;
+        if (key.leftArrow) {
+            if (currentKey && expanded.has(currentKey)) handleRunNav(currentItem.mi, currentItem.si, -1);
+            else setSectionIdx(i => Math.max(0, i - 1));
+        }
+        if (key.rightArrow) {
+            if (currentKey && expanded.has(currentKey)) handleRunNav(currentItem.mi, currentItem.si, 1);
+            else setSectionIdx(i => Math.min(sections.length - 1, i + 1));
+        }
         if (input === 's' && !isDemoMode) setSavedPath(saveResults(results, path.dirname(specPath), path.basename(specPath, path.extname(specPath))));
         if (key.escape) onBack();
     });
@@ -1136,27 +1232,28 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
     const section = sections[sectionIdx];
 
     return (
-        <Box flexDirection="column" paddingTop={1} gap={1}>
+        <ScreenLayout title="Results"
+            helpItems={[{ key: '↑↓', action: 'scenario' }, { key: '←→', action: 'section/runs' }, { key: 'Space', action: 'expand' }, { key: 's', action: 'save' }, { key: 'Esc', action: 'menu' }]}>
             {/* Header */}
             <Box gap={2}>
                 <Text bold>{spec.agent.name}</Text>
-                {isDemoMode && <Text color="yellow">[demo mode]</Text>}
-                {savedAt && <Text dimColor>[saved · {savedAt}]</Text>}
+                {isDemoMode && <Badge text="demo mode" color={colors.warning} />}
+                {savedAt && <Badge text={`saved ${symbols.dot} ${savedAt}`} color={colors.muted} />}
             </Box>
 
-            {/* Section indicator */}
-            <Box gap={1} paddingLeft={2}>
-                {sections.map((s, i) => {
-                    const label = s.type === 'model' ? results[s.mi].model
-                        : s.type === 'comparison' ? 'Comparison'
-                        : 'Summary';
-                    return (
-                        <Text key={i} color={i === sectionIdx ? 'cyan' : undefined} dimColor={i !== sectionIdx}>
-                            {i === sectionIdx ? `[${label}]` : ` ${label} `}
-                        </Text>
-                    );
-                })}
-            </Box>
+            {/* Section tabs in panel */}
+            <Panel>
+                <Box gap={1}>
+                    {sections.map((s, i) => {
+                        const label = s.type === 'model' ? results[s.mi].model
+                            : s.type === 'comparison' ? 'Comparison'
+                            : 'Summary';
+                        return i === sectionIdx
+                            ? <Text key={i} inverse color={colors.focus}> {label} </Text>
+                            : <Text key={i} dimColor> {label} </Text>;
+                    })}
+                </Box>
+            </Panel>
 
             {/* Active section content */}
             {section.type === 'model' && (() => {
@@ -1173,6 +1270,8 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
                         expandedSis={new Set(r.metrics
                             .map((_, si) => expanded.has(`${mi}:${si}`) ? si : -1)
                             .filter(x => x >= 0))}
+                        runIndices={new Map(r.metrics.map((_, si) => [si, runIndices.get(`${mi}:${si}`) ?? 0]))}
+                        onRunNav={(si, delta) => handleRunNav(mi, si, delta)}
                     />
                 );
             })()}
@@ -1181,9 +1280,8 @@ function ResultsStep({ spec, results, specPath, onBack, savedAt, isDemoMode }: {
 
             {section.type === 'summary' && <SummaryBlock results={results} />}
 
-            {savedPath && <Text color="green">  ✓ saved → {savedPath}</Text>}
-            <Text dimColor>  ↑↓ scenario  ·  ←→ section  ·  Space expand/collapse  ·  s save  ·  Esc menu</Text>
-        </Box>
+            {savedPath && <Text color={colors.success}>  {symbols.check} saved {symbols.arrow} {savedPath}</Text>}
+        </ScreenLayout>
     );
 }
 
@@ -1202,8 +1300,8 @@ function ModelsListStep({ onShow, onBack }: {
     const deprecatedModels = models.filter(m => m.deprecated);
     const orderedModels    = [...activeModels, ...deprecatedModels];
 
-    // Logo ≈ 9 rows, component header ≈ 4 rows (paddingTop + title + headers + gap), footer ≈ 2 rows
-    const maxVisible = Math.max(4, (process.stdout.rows ?? 24) - 15);
+    // Header ≈ 5 rows, footer ≈ 2 rows (no logo on sub-screens)
+    const maxVisible = Math.max(4, (process.stdout.rows ?? 24) - 7);
 
     useInput((input, key) => {
         if (key.upArrow) {
@@ -1219,9 +1317,9 @@ function ModelsListStep({ onShow, onBack }: {
         if (key.return) onShow(orderedModels[cursorIdx]!.id);
         if (input === 'v') {
             const r = validateUserModelConfig();
-            if (r.valid)         setValidateMsg(`✓ Valid — ${r.count} model(s)`);
+            if (r.valid)         setValidateMsg(`${symbols.check} Valid — ${r.count} model(s)`);
             else if (r.missing)  setValidateMsg('No user config at ~/.config/vrunai/models.json');
-            else                 setValidateMsg(`✗ ${r.errors.join('  ')}`);
+            else                 setValidateMsg(`${symbols.cross} ${r.errors.join('  ')}`);
         }
         if (key.escape) onBack();
     });
@@ -1240,11 +1338,11 @@ function ModelsListStep({ onShow, onBack }: {
             : (m.context_window / 1_000).toFixed(0) + 'k';
         return (
             <Box key={m.id} gap={0}>
-                <Text color={focused ? 'cyan' : undefined}>{focused ? '❯ ' : '  '}</Text>
-                <Text color={focused ? 'cyan' : undefined} dimColor={m.deprecated}>
-                    {m.id.slice(0, COL_ID).padEnd(COL_ID)}
+                <Text color={focused ? colors.focus : undefined}>{focused ? `${symbols.cursor} ` : '  '}</Text>
+                <Text color={focused ? colors.focus : undefined} dimColor={m.deprecated}>
+                    {truncate(m.id, COL_ID).padEnd(COL_ID)}
                 </Text>
-                <Text dimColor={!focused}>{m.name.slice(0, COL_NAME).padEnd(COL_NAME)}</Text>
+                <Text dimColor={!focused}>{truncate(m.name, COL_NAME).padEnd(COL_NAME)}</Text>
                 <Text dimColor>{'$' + m.pricing.input_per_1m_tokens.toFixed(3).padStart(COL_IN - 1)}</Text>
                 <Text dimColor>{'$' + m.pricing.output_per_1m_tokens.toFixed(3).padStart(COL_OUT - 1)}</Text>
                 <Text dimColor>{ctx.padStart(COL_CTX)}</Text>
@@ -1257,33 +1355,36 @@ function ModelsListStep({ onShow, onBack }: {
     const showScrollDown = viewportStart + maxVisible < orderedModels.length;
 
     return (
-        <Box flexDirection="column" paddingLeft={2} paddingTop={1} gap={1}>
-            <Text bold>Models</Text>
-            <Box gap={0}>
-                <Text dimColor>{''.padEnd(2)}</Text>
-                <Text dimColor bold>{'ID'.padEnd(COL_ID)}</Text>
-                <Text dimColor bold>{'Name'.padEnd(COL_NAME)}</Text>
-                <Text dimColor bold>{'Input/1M'.padStart(COL_IN)}</Text>
-                <Text dimColor bold>{'Output/1M'.padStart(COL_OUT)}</Text>
-                <Text dimColor bold>{'Context'.padStart(COL_CTX)}</Text>
-            </Box>
-            {showScrollUp && <Text dimColor>  ↑ {viewportStart} more above</Text>}
-            {visibleModels.map((m, vi) => {
-                const i = viewportStart + vi;
-                const sepBefore = i === activeModels.length && deprecatedModels.length > 0;
-                return (
-                    <Box key={m.id} flexDirection="column" gap={0}>
-                        {sepBefore && <Text dimColor>{'  ── deprecated ' + '─'.repeat(Math.max(0, COL_ID + COL_NAME + COL_IN + COL_OUT + COL_CTX - 14))}</Text>}
-                        <ModelRow m={m} i={i} />
-                    </Box>
-                );
-            })}
-            {showScrollDown && <Text dimColor>  ↓ {orderedModels.length - viewportStart - maxVisible} more below</Text>}
+        <ScreenLayout title="Models"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'detail' }, { key: 'v', action: 'validate config' }, { key: 'Esc', action: 'back' }]}
+            statusLeft={`${orderedModels.length} models`}>
+            <Panel>
+                <Box gap={0}>
+                    <Text dimColor>{''.padEnd(2)}</Text>
+                    <Text dimColor bold>{'ID'.padEnd(COL_ID)}</Text>
+                    <Text dimColor bold>{'Name'.padEnd(COL_NAME)}</Text>
+                    <Text dimColor bold>{'Input/1M'.padStart(COL_IN)}</Text>
+                    <Text dimColor bold>{'Output/1M'.padStart(COL_OUT)}</Text>
+                    <Text dimColor bold>{'Context'.padStart(COL_CTX)}</Text>
+                </Box>
+                <Separator />
+                {showScrollUp && <Text dimColor>  ↑ {viewportStart} more above</Text>}
+                {visibleModels.map((m, vi) => {
+                    const i = viewportStart + vi;
+                    const sepBefore = i === activeModels.length && deprecatedModels.length > 0;
+                    return (
+                        <Box key={m.id} flexDirection="column" gap={0}>
+                            {sepBefore && <Text dimColor>{'  ' + symbols.separator.repeat(2) + ' deprecated ' + symbols.separator.repeat(Math.max(0, COL_ID + COL_NAME + COL_IN + COL_OUT + COL_CTX - 14))}</Text>}
+                            <ModelRow m={m} i={i} />
+                        </Box>
+                    );
+                })}
+                {showScrollDown && <Text dimColor>  ↓ {orderedModels.length - viewportStart - maxVisible} more below</Text>}
+            </Panel>
             {validateMsg && (
-                <Text color={validateMsg.startsWith('✓') ? 'green' : 'yellow'}>{validateMsg}</Text>
+                <Text color={validateMsg.startsWith(symbols.check) ? colors.success : colors.warning}>{validateMsg}</Text>
             )}
-            <Text dimColor>  ↑↓ navigate  ·  Enter show detail  ·  v validate user config  ·  Esc back</Text>
-        </Box>
+        </ScreenLayout>
     );
 }
 
@@ -1296,45 +1397,29 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
 
     if (!model) {
         return (
-            <Box paddingLeft={2} paddingTop={1}>
-                <Text color="red">Model not found: {modelId}</Text>
-            </Box>
+            <ScreenLayout title="Model Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
+                <Text color={colors.error}>Model not found: {modelId}</Text>
+            </ScreenLayout>
         );
     }
 
-    const check = (v: boolean) => <Text color={v ? 'green' : 'red'}>{v ? '✓' : '✗'}</Text>;
+    const check = (v: boolean) => <StatusIcon state={v ? 'success' : 'error'} />;
     const ctx = model.context_window >= 1_000_000
         ? (model.context_window / 1_000_000).toFixed(0) + 'M tokens'
         : (model.context_window / 1_000).toFixed(0) + 'k tokens';
+    const titleSuffix = model.deprecated ? ` [deprecated]` : '';
 
     return (
-        <Box flexDirection="column" paddingLeft={2} paddingTop={1} gap={1}>
-            <Box gap={1}>
-                <Text bold>{model.id}</Text>
-                <Text dimColor>—</Text>
-                <Text>{model.name}</Text>
-                {model.deprecated && <Text color="yellow">[deprecated]</Text>}
-            </Box>
-            <Box flexDirection="column" gap={0} paddingLeft={2}>
-                <Box gap={1}><Text dimColor>{'Provider:'.padEnd(16)}</Text><Text>{model.provider}</Text></Box>
-                <Box gap={1}><Text dimColor>{'Context:'.padEnd(16)}</Text><Text>{ctx}</Text></Box>
-                <Box gap={1}><Text dimColor>{'Tools:'.padEnd(16)}</Text>{check(model.supports_tools)}</Box>
-                <Box gap={1}><Text dimColor>{'Vision:'.padEnd(16)}</Text>{check(model.supports_vision)}</Box>
-                <Box gap={1}>
-                    <Text dimColor>{'Input pricing:'.padEnd(16)}</Text>
-                    <Text>${model.pricing.input_per_1m_tokens.toFixed(3)} / 1M tokens</Text>
-                </Box>
-                <Box gap={1}>
-                    <Text dimColor>{'Output pricing:'.padEnd(16)}</Text>
-                    <Text>${model.pricing.output_per_1m_tokens.toFixed(3)} / 1M tokens</Text>
-                </Box>
-            </Box>
-            <SelectInput
-                items={[{ label: '← Back', value: '__back__' }]}
-                onSelect={onBack}
-            />
-            <Text dimColor>  Enter / Esc back</Text>
-        </Box>
+        <ScreenLayout title="Model Detail" helpItems={[{ key: 'Esc', action: 'back' }]}>
+            <Panel title={`${model.id} — ${model.name}${titleSuffix}`} titleColor={colors.accent}>
+                <KeyValue label="Provider:">{model.provider}</KeyValue>
+                <KeyValue label="Context:">{ctx}</KeyValue>
+                <KeyValue label="Tools:">{check(model.supports_tools)}</KeyValue>
+                <KeyValue label="Vision:">{check(model.supports_vision)}</KeyValue>
+                <KeyValue label="Input pricing:">${model.pricing.input_per_1m_tokens.toFixed(3)} / 1M tokens</KeyValue>
+                <KeyValue label="Output pricing:">${model.pricing.output_per_1m_tokens.toFixed(3)} / 1M tokens</KeyValue>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1343,28 +1428,14 @@ function ModelsDetailStep({ modelId, onBack }: { modelId: string; onBack: () => 
 function AboutStep({ onBack }: { onBack: () => void }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>About vrunai</Text>
-            <Box flexDirection="column" gap={0}>
-                <Box gap={2}>
-                    <Text dimColor>Version   </Text>
-                    <Text>0.1.0</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>Website   </Text>
-                    <Text color="cyan">https://vrunai.com</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>Repository</Text>
-                    <Text color="cyan">https://github.com/vrunai/vrunai</Text>
-                </Box>
-                <Box gap={2}>
-                    <Text dimColor>License   </Text>
-                    <Text>AGPL-3.0</Text>
-                </Box>
-            </Box>
-            <Text dimColor>Esc  back</Text>
-        </Box>
+        <ScreenLayout title="About" helpItems={[{ key: 'Esc', action: 'back' }]}>
+            <Panel title="vrunai" titleColor={colors.accent}>
+                <KeyValue label="Version:">{PKG_VERSION}</KeyValue>
+                <KeyValue label="Website:"><Text color={colors.accent}>https://vrunai.com</Text></KeyValue>
+                <KeyValue label="Repository:"><Text color={colors.accent}>https://github.com/vrunai/vrunai</Text></KeyValue>
+                <KeyValue label="License:">AGPL-3.0</KeyValue>
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1376,30 +1447,65 @@ function ExampleSelectStep({ onSelect, onBack }: {
 }) {
     useInput((_, key) => { if (key.escape) onBack(); });
     return (
-        <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>Try an Example</Text>
-            <Text dimColor>Select an example agent spec:</Text>
-            <SelectInput
-                items={[
-                    ...EXAMPLES.map((e, i) => ({
+        <ScreenLayout title="Try an Example"
+            helpItems={[{ key: '↑↓', action: 'navigate' }, { key: 'Enter', action: 'select' }, { key: 'Esc', action: 'back' }]}>
+            <Panel>
+                <Text dimColor>Select an example agent spec:</Text>
+                <SelectInput
+                    items={EXAMPLES.map((e, i) => ({
                         label: `${e.label}  (${e.scenarios} scenarios, ${e.tools} tools)`,
                         value: String(i),
-                    })),
-                    { label: '← Back', value: '__back__' },
-                ]}
-                onSelect={item => {
-                    if (item.value === '__back__') { onBack(); return; }
-                    try {
-                        const ex = EXAMPLES[Number(item.value)];
-                        const spec = parseYamlText(ex.yaml);
-                        onSelect(spec, ex.label);
-                    } catch {
-                        onBack();
-                    }
-                }}
-            />
-            <Text dimColor>  ↑↓ navigate  ·  Enter select  ·  Esc back</Text>
-        </Box>
+                    }))}
+                    onSelect={item => {
+                        try {
+                            const ex = EXAMPLES[Number(item.value)];
+                            const spec = parseYamlText(ex.yaml);
+                            onSelect(spec, ex.label);
+                        } catch {
+                            onBack();
+                        }
+                    }}
+                />
+            </Panel>
+        </ScreenLayout>
+    );
+}
+
+// ── Step: Provider test ───────────────────────────────────────────────────────
+
+function ProviderTestStep({ providerName, onDone }: { providerName: string; onDone: () => void }) {
+    const spinner = useSpinner();
+    const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+    useInput((_, key) => { if (key.escape || key.return) onDone(); });
+
+    useEffect(() => {
+        const saved = loadConfig().providers.find(p => p.name === providerName);
+        if (!saved) { setResult({ ok: false, error: 'Provider not found' }); return; }
+        const kind = (saved.kind === 'custom' ? 'custom' : saved.kind === 'predefined' ? saved.preset : 'custom') as ProviderKind;
+        const provider = coreProvider(kind, {
+            model: saved.kind === 'custom' ? saved.model : PRESETS[saved.kind === 'predefined' ? saved.preset : 'openai'].defaultModel,
+            apiKey: saved.apiKey,
+            baseUrl: saved.baseUrl,
+        });
+        testConnection(provider).then(setResult);
+    }, []);
+
+    return (
+        <ScreenLayout title="Test Connection"
+            helpItems={result ? [{ key: 'Enter', action: 'continue' }, { key: 'Esc', action: 'continue' }] : []}>
+            <Panel title={providerName} titleColor={colors.accent}
+                   borderColor={result?.ok ? colors.success : result && !result.ok ? colors.error : colors.muted}>
+                {!result && <Text color={colors.warning}>{spinner} Sending test request…</Text>}
+                {result?.ok && <Text color={colors.success}>{symbols.check} Connection successful</Text>}
+                {result && !result.ok && (
+                    <Box flexDirection="column">
+                        <Text color={colors.error}>{symbols.cross} Connection failed</Text>
+                        <Text dimColor>  {result.error}</Text>
+                    </Box>
+                )}
+            </Panel>
+        </ScreenLayout>
     );
 }
 
@@ -1495,14 +1601,12 @@ export function App() {
                     name: step.fields.name, apiKey: step.fields.apiKey,
                     baseUrl: PRESETS[step.preset].baseUrl };
             addProvider(saved);
-            setStep({ kind: 'providers-list' });
+            setStep({ kind: 'providers-test', providerName: saved.name });
         }
     }
 
     return (
-        <Box flexDirection="column" paddingX={2}>
-            <Logo />
-
+        <Box flexDirection="column" paddingX={1}>
             {step.kind === 'menu' && (
                 <MenuStep onSelect={handleMenuSelect} />
             )}
@@ -1538,6 +1642,7 @@ export function App() {
                         deleteProvider(step.providerIndex);
                         setStep({ kind: 'providers-list' });
                     }}
+                    onTest={() => setStep({ kind: 'providers-test', providerName: step.providerName })}
                     onBack={() => setStep({ kind: 'providers-list' })}
                 />
             )}
@@ -1564,6 +1669,13 @@ export function App() {
                         setStep({ ...step, activeField: next });
                     }}
                     onBack={() => setStep({ kind: 'providers-preset-select' })}
+                />
+            )}
+
+            {step.kind === 'providers-test' && (
+                <ProviderTestStep
+                    providerName={step.providerName}
+                    onDone={() => setStep({ kind: 'providers-list' })}
                 />
             )}
 

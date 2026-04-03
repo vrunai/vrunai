@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
-import { chmodSync } from 'fs';
+import { chmodSync, readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
 const banner = [
     '#!/usr/bin/env node',
@@ -16,7 +18,7 @@ await build({
     outfile: 'dist/index.js',
     banner: { js: banner },
     alias: { 'react-devtools-core': './src/devtools-stub.js' },
-    define: { 'process.env.NODE_ENV': '"production"' },
+    define: { 'process.env.NODE_ENV': '"production"', 'PKG_VERSION': JSON.stringify(pkg.version) },
 });
 
 chmodSync('dist/index.js', 0o755);

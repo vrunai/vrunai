@@ -1,0 +1,30 @@
+import React from 'react';
+import { Box, Text } from 'ink';
+import { borders, colors } from '../../theme.js';
+
+export function Panel({
+    title,
+    titleColor,
+    borderColor,
+    borderStyle,
+    children,
+}: {
+    title?: string;
+    titleColor?: string;
+    borderColor?: string;
+    borderStyle?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <Box
+            flexDirection="column"
+            borderStyle={(borderStyle ?? borders.panel) as 'round' | 'single' | 'double' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic'}
+            borderColor={borderColor ?? colors.muted}
+            paddingX={1}
+            overflowY="hidden"
+        >
+            {title && <Text bold color={titleColor}>{title}</Text>}
+            {children}
+        </Box>
+    );
+}
