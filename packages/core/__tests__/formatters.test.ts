@@ -45,23 +45,23 @@ describe('fmtPct', () => {
 
 describe('pctColor', () => {
     it('returns green for >= 90%', () => {
-        expect(pctColor(0.9)).toBe('#22C55E');
-        expect(pctColor(1.0)).toBe('#22C55E');
+        expect(pctColor(0.9)).toBe('#9ece6a');
+        expect(pctColor(1.0)).toBe('#9ece6a');
     });
 
     it('returns blue for >= 70%', () => {
-        expect(pctColor(0.7)).toBe('#3B82F6');
-        expect(pctColor(0.89)).toBe('#3B82F6');
+        expect(pctColor(0.7)).toBe('#7aa2f7');
+        expect(pctColor(0.89)).toBe('#7aa2f7');
     });
 
     it('returns orange for >= 50%', () => {
-        expect(pctColor(0.5)).toBe('#F59E0B');
-        expect(pctColor(0.69)).toBe('#F59E0B');
+        expect(pctColor(0.5)).toBe('#e0af68');
+        expect(pctColor(0.69)).toBe('#e0af68');
     });
 
     it('returns red for < 50%', () => {
-        expect(pctColor(0.49)).toBe('#EF4444');
-        expect(pctColor(0)).toBe('#EF4444');
+        expect(pctColor(0.49)).toBe('#f7768e');
+        expect(pctColor(0)).toBe('#f7768e');
     });
 });
 

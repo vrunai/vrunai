@@ -11,12 +11,12 @@ import markLightSrc from '../assets/mark-light.svg'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const PROVIDER_COLORS: Record<string, string> = {
-  openai:    '#10B981',
-  anthropic: '#8B5CF6',
-  google:    '#3B82F6',
-  xai:       '#64748B',
-  deepseek:  '#06B6D4',
-  mistral:   '#F59E0B',
+  openai:    '#73daca',
+  anthropic: '#bb9af7',
+  google:    '#7aa2f7',
+  xai:       '#787c99',
+  deepseek:  '#2ac3de',
+  mistral:   '#e0af68',
   custom:    'var(--accent)',
 }
 

@@ -20,13 +20,13 @@ const KIND_OPTIONS: { value: ProviderKind; label: string; baseUrl: string }[] = 
 ]
 
 const KIND_COLORS: Record<ProviderKind, string> = {
-  openai:    '#10B981',
-  anthropic: '#8B5CF6',
-  google:    '#3B82F6',
-  xai:       '#64748B',
-  deepseek:  '#06B6D4',
-  mistral:   '#F59E0B',
-  custom:    '#64748B',
+  openai:    '#73daca',
+  anthropic: '#bb9af7',
+  google:    '#7aa2f7',
+  xai:       '#787c99',
+  deepseek:  '#2ac3de',
+  mistral:   '#e0af68',
+  custom:    '#787c99',
 }
 
 function maskKey(key: string): string {
@@ -238,7 +238,7 @@ function ProviderForm({ initial, onSave, onCancel }: {
             onClick={handleSave}
             disabled={(kind !== 'custom' && !apiKey.trim()) || testing}
             className="px-4 py-1.5 text-sm rounded-lg font-medium transition-colors"
-            style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF', opacity: ((kind !== 'custom' && !apiKey.trim()) || testing) ? 0.5 : 1 }}
+            style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', opacity: ((kind !== 'custom' && !apiKey.trim()) || testing) ? 0.5 : 1 }}
           >
             {testing ? 'Saving…' : 'Save'}
           </button>
@@ -349,7 +349,7 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
             <button
               onClick={() => setAdding(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF' }}
+              style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg-hover)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--btn-primary-bg)' }}
             >
@@ -393,7 +393,7 @@ export function ProvidersScreen({ providers, onAdd, onUpdate, onDelete }: Props)
             <button
               onClick={() => setAdding(true)}
               className="px-4 py-2 text-sm rounded-lg font-medium"
-              style={{ background: 'var(--btn-primary-bg)', color: '#FFFFFF' }}
+              style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }}
             >
               Add Provider
             </button>

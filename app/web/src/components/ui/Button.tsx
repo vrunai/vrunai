@@ -17,7 +17,7 @@ interface Props {
 const BASE = 'inline-flex items-center gap-1.5 font-semibold cursor-pointer border transition-colors duration-150 rounded-lg'
 
 const VARIANTS: Record<Variant, string> = {
-  'primary':      'border-transparent text-white [background:var(--btn-primary-bg)] hover:[background:var(--btn-primary-bg-hover)]',
+  'primary':      'border-transparent text-[var(--btn-primary-text)] [background:var(--btn-primary-bg)] hover:[background:var(--btn-primary-bg-hover)]',
   'ghost':        'bg-transparent border-[var(--border)] text-[var(--btn-secondary-text)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] hover:bg-[var(--btn-secondary-hover-bg)]',
   'danger-ghost': 'bg-transparent border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--red)] hover:text-[var(--red)]',
 }
