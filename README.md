@@ -34,13 +34,13 @@ Most teams evaluate agents by checking the final output. But agents can produce 
 VRUNAI tracks **path accuracy**, **tool accuracy**, and **outcome accuracy** separately — and catches bugs that output-only evaluation misses.
 
 <p align="center">
-   <img src="docs/screenshot-results.png" alt="VRUNAI TUI — evaluation results" width="800" />
+   <img src="docs/new_cli_013.png" alt="VRUNAI TUI — evaluation results" width="800" />
 </p>
 
 <p align="center"><em>TUI - side-by-side evaluation results across providers</em></p>
 
 <p align="center">
-   <img src="docs/screenshot-web-pre-eval.png" alt="VRUNAI Web UI — pre-evaluation view" width="800" />
+   <img src="docs/new_web_013.png" alt="VRUNAI Web UI — pre-evaluation view" width="800" />
 </p>
 
 <p align="center"><em>Web UI - scenario & flow preview before running evaluation</em></p>
