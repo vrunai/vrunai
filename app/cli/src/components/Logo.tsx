@@ -7,11 +7,11 @@ function lerp(a: number, b: number, t: number) {
     return Math.round(a + (b - a) * t);
 }
 
-// cyan → purple → pink  (matches the retro terminal aesthetic)
+// blue → purple → pink  (Tokyo Night palette)
 const STOPS: [number, number, number][] = [
-    [0,   229, 255],  // #00E5FF  cyan
-    [99,   56, 224],  // #6338E0  indigo
-    [255,   0, 128],  // #FF0080  pink
+    [122, 162, 247],  // #7aa2f7  blue
+    [187, 154, 247],  // #bb9af7  purple
+    [247, 118, 142],  // #f7768e  pink
 ];
 
 function gradientColor(t: number): string {
